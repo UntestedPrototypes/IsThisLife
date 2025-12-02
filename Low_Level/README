@@ -1,0 +1,1 @@
+This is the code for the low-level ESP32 controller. It is in charge of commanding the main ESC and Servos through PWM.
