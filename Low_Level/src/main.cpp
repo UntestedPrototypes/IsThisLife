@@ -3,8 +3,8 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 #include <ESP32Servo.h>
-
-
+#include <angles.h>
+#include <vectors.h>
 // ----------------- Class definition -----------------
 class motorChannel {
 public:
@@ -36,6 +36,7 @@ public:
       direction_inverted(direction_inverted_) {
       };
 };
+
 
 
 // ----------------- Configuration -----------------
@@ -138,6 +139,20 @@ int commandServo(float controlNorm, motorChannel motor) {
   return pulse;
 }
 
+bool readImuQuaternion(Adafruit_BNO055 &imu, Quaternion &out)
+{
+    // Adafruit's quaternion type (from the library)
+    imu::Quaternion q = imu.getQuat();
+
+    out.w = q.w();
+    out.x = q.x();
+    out.y = q.y();
+    out.z = q.z();
+    return true;
+}
+
+
+
 void handleSerial() {
   if (!Serial.available()) return;
 
@@ -146,7 +161,7 @@ void handleSerial() {
   if (line.length() == 0) return;
 
   if (line.equalsIgnoreCase("r")) {
-    zeroIMU();
+    // zeroIMU();
     desiredPitch = 0.0f;
     desiredRoll  = 0.0f;
     Serial.println("IMU re-zeroed, desired pitch = 0 deg");
