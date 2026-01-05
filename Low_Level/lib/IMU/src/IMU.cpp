@@ -1,92 +1,138 @@
-#include "imu.h"
-
+#include "IMU.h"
 #include <Wire.h>
-#include <math.h>
+#include <cmath>
 
 /* ============================================================
-   Constructor
+   Internal helpers
    ============================================================ */
 
-IMU::IMU(
-    uint8_t id,
-    uint8_t i2cAddr,
-    int8_t rstPin,
-    const Vec3& rodAxisIMU,
-    const Vec3& planeRefIMU
-)
-: _id(id)
-, _addr(i2cAddr)
-, _rstPin(rstPin)
-, _bno(nullptr)
-, _rodAxisIMU(vecNormalize(rodAxisIMU))
-, _planeRefIMU(vecNormalize(planeRefIMU))
+static bool readImuQuaternion(Adafruit_BNO055 &imu, Quaternion &out)
 {
-    // Optional safety check: ensure orthogonality
-    // Caller error if violated
-    if (fabsf(vecDot(_rodAxisIMU, _planeRefIMU)) > 1e-3f) {
-        // Configuration error — halt
-        while (true) { }
-    }
-}
+    imu::Quaternion q = imu.getQuat();
 
-/* ============================================================
-   Startup
-   ============================================================ */
+    out.w = static_cast<float>(q.w());
+    out.x = static_cast<float>(q.x());
+    out.y = static_cast<float>(q.y());
+    out.z = static_cast<float>(q.z());
 
-bool IMU::begin() {
-    _bno = new Adafruit_BNO055(_id, _addr);
-
-    if (_rstPin >= 0) {
-        pinMode(_rstPin, OUTPUT);
-        digitalWrite(_rstPin, LOW);
-        delay(20);          // datasheet: >10 ms
-        digitalWrite(_rstPin, HIGH);
-        delay(650);         // allow full reboot
-    }
-
-    if (!_bno->begin()) {
-        return false;
-    }
-
-    _bno->setExtCrystalUse(true);
     return true;
 }
 
 /* ============================================================
-   Public update
+   IMU implementation
    ============================================================ */
 
-void IMU::update() {
-    readRaw();
+IMU::IMU(const char* name_,
+         uint8_t i2cAddress_,
+         int rstPin_)
+: name(name_),
+  i2cAddress(i2cAddress_),
+  rstPin(rstPin_),
+  bno(55, i2cAddress_),
+  calibrated(false)
+{
+    orientation = quatIdentity;
+}
+
+void IMU::hardwareReset()
+{
+    if (rstPin < 0) return;
+
+    pinMode(rstPin, OUTPUT);
+    digitalWrite(rstPin, LOW);
+    delay(20);
+    digitalWrite(rstPin, HIGH);
+    delay(50);
+}
+
+bool IMU::begin()
+{
+    hardwareReset();
+
+    if (!bno.begin())
+        return false;
+
+    delay(20);
+    bno.setExtCrystalUse(true);
+    return true;
+}
+
+bool IMU::update()
+{
+    // Read orientation
+    readImuQuaternion(bno, orientation);
+
+    // Feed gyro samples into axis calibration
+    if (axisCal.calibrating()) {
+        Vec3 gyro = readGyroRaw();
+        axisCal.update(gyro);
+
+        if (!axisCal.calibrating()) {
+            calibrated = true;
+        }
+    }
+
+    return true;
 }
 
 /* ============================================================
-   Raw sensor read
+   Raw sensor access
    ============================================================ */
 
-void IMU::readRaw() {
+Vec3 IMU::readAccelRaw()
+{
     imu::Vector<3> a =
-        _bno->getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+        bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
 
-    accelRaw = { a.x(), a.y(), a.z() };
+    return Vec3(a);
+}
 
-    imu::Quaternion q = _bno->getQuat();
+Vec3 IMU::readGyroRaw()
+{
+    imu::Vector<3> g =
+        bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
 
-    // IMPORTANT: correct component order
-    orientation = {
-        q.w(),
-        q.x(),
-        q.y(),
-        q.z()
-    };
+    return Vec3(g);
+}
+
+Vec3 IMU::readMagRaw()
+{
+    imu::Vector<3> m =
+        bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
+
+    return Vec3(m);
 }
 
 /* ============================================================
-   Calibration status
+   Calibration control
    ============================================================ */
 
-bool IMU::isCalibrated() const {
-    uint8_t s, g, a, m;
-    _bno->getCalibration(&s, &g, &a, &m);
-    return (s == 3 && g == 3 && a == 3 && m == 3);
+void IMU::startCalibration()
+{
+    calibrated = false;
+    axisCal.begin();
+}
+
+bool IMU::isCalibrated() const
+{
+    return calibrated;
+}
+
+/* ============================================================
+   Orientation access
+   ============================================================ */
+
+Quaternion IMU::getQuaternion() const
+{
+    return orientation;
+}
+
+Vec3 IMU::getRodAxisIMU() const
+{
+    return axisCal.rodAxis();
+}
+
+Vec3 IMU::getPlaneRefIMU() const
+{
+    return axisCal.planeRef();
 }

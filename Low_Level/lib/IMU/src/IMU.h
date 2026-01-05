@@ -1,43 +1,70 @@
-#pragma once
+#ifndef IMU_H
+#define IMU_H
 
-#include <stdint.h>
-#include <vectors.h>
+#include <Arduino.h>
 #include <Adafruit_BNO055.h>
+
+#include "vectors.h"
+#include "IMUaxisCalibration.h"
+
+/* ============================================================
+   IMU class
+   ============================================================ */
 
 class IMU {
 public:
-    IMU(
-        uint8_t id,
-        uint8_t i2cAddr,
-        int8_t rstPin,
-        const Vec3& rodAxisIMU,
-        const Vec3& planeRefIMU
-    );
+    // Constructor: fully defines one IMU
+    IMU(const char* name,
+        uint8_t i2cAddress,
+        int rstPin);
 
+    // Hardware control
     bool begin();
-    void update();
+    bool update();
+
+    // Calibration control
+    void startCalibration();
     bool isCalibrated() const;
 
-    // Accessors
-    const Quaternion& getQuaternion() const { return orientation; }
-    const Vec3& getRodAxisIMU() const { return _rodAxisIMU; }
-    const Vec3& getPlaneRefIMU() const { return _planeRefIMU; }
+    // Sensor outputs (raw or calibrated as needed)
+    Vec3 getAccel();
+    Vec3 getGyro();
+    Vec3 getMag();
+
+    // Orientation
+    Quaternion getQuaternion() const;
+
+    // Metadata
+    const char* getName() const { return name; }
+
+    Vec3 getRodAxisIMU() const;
+    Vec3 getPlaneRefIMU() const;
+
 
 private:
-    void readRaw();
-    // void applyCalibration();  // REMOVE unless implemented
+    // Low-level helpers
+    void hardwareReset();
 
-    uint8_t _id;
-    uint8_t _addr;
-    int8_t  _rstPin;
+    Vec3 readAccelRaw();
+    Vec3 readGyroRaw();
+    Vec3 readMagRaw();
 
-    Adafruit_BNO055* _bno;
+private:
+    // Identification
+    const char* name;
 
-    // Sensor outputs
-    Vec3 accelRaw;
+    // Hardware configuration
+    uint8_t i2cAddress;
+    int rstPin;
+
+    // Sensor driver (owned)
+    Adafruit_BNO055 bno;
+
+    // State
     Quaternion orientation;
 
-    // Mounting geometry
-    Vec3 _rodAxisIMU;
-    Vec3 _planeRefIMU;
+    IMUaxisCalibration axisCal;
+    bool calibrated;
 };
+
+#endif // IMU_H

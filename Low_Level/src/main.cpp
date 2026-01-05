@@ -19,6 +19,7 @@ public:
   unsigned int speed_range_us; // range around neutral
   unsigned int min_delta_us; // minimum change in pulse width to register movement
   bool direction_inverted;  // direction inversion flag
+  Vec3 pid;              // PID coefficients (Kp, Ki, Kd)
   bool enabled;          // motor enabled flag
   float pidIntegral;     // integral term for PID control
   float lastError;       // last error for derivative term
@@ -30,14 +31,16 @@ public:
          unsigned int neutral_us_,
          unsigned int speed_range_us_,
          unsigned int min_delta_us_ = 0,
-         bool direction_inverted_ = false)
-    : pin(pin_),
+         bool direction_inverted_ = false,
+         Vec3 pid_ = Vec3(0.0f, 0.0f, 0.0f)
+    ) : pin(pin_),
       min_us(min_us_),
       max_us(max_us_),
       neutral_us(neutral_us_),
       speed_range_us(speed_range_us_),
       min_delta_us(min_delta_us_),
-      direction_inverted(direction_inverted_) {
+      direction_inverted(direction_inverted_),
+      pid(pid_) {
       };
 };
 
@@ -68,18 +71,14 @@ const float INTEGRAL_LIMIT      = 80.0f;
 
 
 // Motor configuration
-motorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false); // ESC connected to pin 27
-motorChannel servoL(SERVO_L_PIN, 500, 2500, 1500, 500,75, false); // TD-8120MG 360° Left
-motorChannel servoR(SERVO_R_PIN, 500, 2500, 1500, 500,75, true);    // TD-8120MG 360° Right
+motorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, Vec3(Kp, Ki, Kd)); // ESC connected to pin 27
+motorChannel servoL(SERVO_L_PIN, 500, 2500, 1500, 500,75, false, Vec3(Kp, Ki, Kd)); // TD-8125MG 360° Left
+motorChannel servoR(SERVO_R_PIN, 500, 2500, 1500, 500,75, true, Vec3(Kp, Ki, Kd));    // TD-8125MG 360° Right
 
 // BNO055 IMU configuration
-IMU imu1(1, 0x28, 16);
+IMU imu1("IMU1", 0x28, 16);
 
-// Adafruit_BNO055 IMU1 = Adafruit_BNO055(55, 0x28);
-// IMUaxisCalibration IMU1Cal;
 
-// Adafruit_BNO055 IMU2 = Adafruit_BNO055(55, 0x29); 
-// IMUaxisCalibration IMU2Cal;
 
 
 // ----------------- Global variables -----------------
@@ -90,14 +89,6 @@ volatile float psi_deg   = 0.0f;  // yaw/heading
 
 
 // ----------------- Functions -----------------
-float wrapAngle(float angle) {
-  /*
-  Wrap angle to [-180, 180]
-  */
-  while (angle > 180.0f) angle -= 360.0f;
-  while (angle < -180.0f) angle += 360.0f;
-  return angle;
-}
 
 
 int commandServo(float controlNorm, motorChannel motor) {
@@ -152,29 +143,50 @@ int commandServo(float controlNorm, motorChannel motor) {
   return pulse;
 }
 
-bool readImuQuaternion(Adafruit_BNO055 &imu, Quaternion &out)
-{
-    // Adafruit's quaternion type (from the library)
-    imu::Quaternion q = imu.getQuat();
+void handlePID(motorChannel &motor, float targetAngleDeg, float currentAngleDeg, float dtSec=1/100.0f) {
+  /*
+  Update motor PID control based on target and current angles
 
-    out.w = q.w();
-    out.x = q.x();
-    out.y = q.y();
-    out.z = q.z();
-    return true;
+  Inputs:
+  motor: reference to motorChannel object
+  targetAngleDeg: desired angle in degrees
+  currentAngleDeg: current angle in degrees
+  dtSec: time step in seconds
+  */
+
+  float error = targetAngleDeg - currentAngleDeg;
+
+  // Wrap error to [-180, 180]
+  error = atan2f(sinf(error * M_PI / 180.0f), cosf(error * M_PI / 180.0f)) * 180.0f / M_PI;
+
+  // Proportional term
+  float P = motor.pid.x * error;
+
+  // Integral term
+  if (fabsf(error) < INTEGRAL_ZONE_DEG) {
+    motor.pidIntegral += error * dtSec;
+    // Clamp integral
+    if (motor.pidIntegral > INTEGRAL_LIMIT) motor.pidIntegral = INTEGRAL_LIMIT;
+    if (motor.pidIntegral < -INTEGRAL_LIMIT) motor.pidIntegral = -INTEGRAL_LIMIT;
+  } else {
+    motor.pidIntegral = 0.0f; // reset integral outside zone
+  }
+  float I = motor.pid.y * motor.pidIntegral;
+
+  // Derivative term
+  float derivative = (error - motor.lastError) / dtSec;
+  float D = motor.pid.z * derivative;
+
+  // Compute total output
+  float output = P + I + D;
+
+  // Update last error
+  motor.lastError = error;
+
+  // Command motor
+  int pulseUs = commandServo(output, motor); 
 }
 
-
-
-void IMU_reset() {
-  Vec3 sum{};
-  for (int i=0; i<50; i++) {
-    imu::Vector<3> e = IMU1.getVector(Adafruit_BNO055::VECTOR_EULER);
-    sum = e + sum;
-  }
-  zeroAngle = sum/50;
-
-}  
 
 
 void handleSerial() {
@@ -185,7 +197,7 @@ void handleSerial() {
   if (line.length() == 0) return;
 
   if (line.equalsIgnoreCase("r")) {
-    IMU_reset();
+    // IMU_reset();
   }
 }
 
@@ -193,54 +205,32 @@ void handleSerial() {
 
 void setup()
 {
+
   Serial.begin(115200);
   delay(1000);
   
 
-
+  printf("Serial started\n");
   // ---------------- I2C ----------------
   Wire.begin(SDA_PIN, SCL_PIN);
-  Wire.setClock(400000);
-  delay(50);
-
+  Wire.setClock(50000);
+  delay(1000);
+  printf("I2C started\n");
   // ---------------- IMU1 startup ----------------
-  if (!imu1.begin()) {
+  while (!imu1.begin()) {
         Serial.println("IMU init failed");
-        while (1);
+        delay(5000);
+  }
+  delay(500);
+  imu1.startCalibration();
+
+  while (!imu1.isCalibrated()) {
+    imu1.update();
+    delay(10);
   }
 
 
-//   pinMode(IMU1_rst, OUTPUT);
 
-//   digitalWrite(IMU1_rst, LOW);   // assert reset
-//   delay(20);                     // >10 ms
-
-//   digitalWrite(IMU1_rst, HIGH);  // release reset
-//   delay(700);                    // allow full boot
-
-//   if (!IMU1.begin())
-//   {
-//     Serial.println("ERROR: BNO055 IMU1 not detected (0x28).");
-//     while (true) { delay(10); }
-//   }
-
-//   delay(50);
-//   IMU1.setExtCrystalUse(true);
-//   delay(10);
-
-//   IMU1Cal.begin();
-
-// while (IMU1Cal.calibrating()) {
-
-//     imu::Vector<3> g = IMU1.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-
-//     Vec3 gyro = {
-//         g.x(), g.y(), g.z()
-//     };
-
-//     IMU1Cal.update(gyro);
-//     delay(10);
-// }
 
 
   Serial.println("IMU1 ready.");
@@ -258,51 +248,100 @@ void setup()
   servoR.pidIntegral    = 0.0f;
   servoR.lastError      = 0.0f;
 
-  Serial.println("test1.");
 
-  // ---------------- BNO055 begin ----------------
 
+ if (imu1.isCalibrated()) {
+        Vec3 rod  = imu1.getRodAxisIMU();
+        Vec3 plane = imu1.getPlaneRefIMU();
+
+        Serial.println("=== IMU CALIBRATION RESULT ===");
+
+        Serial.print("rodAxisIMU   = [ ");
+        Serial.print(rod.x, 6); Serial.print(", ");
+        Serial.print(rod.y, 6); Serial.print(", ");
+        Serial.print(rod.z, 6); Serial.println(" ]");
+
+        Serial.print("planeRefIMU  = [ ");
+        Serial.print(plane.x, 6); Serial.print(", ");
+        Serial.print(plane.y, 6); Serial.print(", ");
+        Serial.print(plane.z, 6); Serial.println(" ]");
+
+        float dot = vecDot(rod, plane);
+        Serial.print("dot(rod, plane) = ");
+        Serial.println(dot, 6);
+
+        Serial.println("==============================");
+
+        delay(5000);
+    }
 }
 
 
 void loop() {
-  handleSerial();
-  static uint32_t lastReadUs  = 0;
-  static uint32_t lastPrintUs = 0;
+   
 
-  const uint32_t READ_PERIOD_US  = 100;    // requested (10 kHz read schedule)
-  const uint32_t PRINT_PERIOD_US = 10000;  // 100 Hz print (serial-safe)
+handleSerial();
+static uint32_t lastReadUs  = 0;
+static uint32_t lastPrintUs = 0;
 
-  uint32_t nowUs = micros();
+const uint32_t READ_PERIOD_US  = 10000;  // 100 Hz
+const uint32_t PRINT_PERIOD_US = 1000000;  // 1 Hz
 
-  // Read IMU1 every 100 us
-  if ((uint32_t)(nowUs - lastReadUs) >= READ_PERIOD_US) {
+uint32_t nowUs = micros();
+
+/* ---------- IMU update ---------- */
+if ((uint32_t)(nowUs - lastReadUs) >= READ_PERIOD_US) {
     lastReadUs += READ_PERIOD_US;
+    imu1.update();
+}
 
-    imu::Vector<3> e = IMU1.getVector(Adafruit_BNO055::VECTOR_EULER);
-    e = e - zeroAngle;
-
-    // Adafruit convention: x=heading(yaw=psi), y=roll(phi), z=pitch(theta)
-    float psi   = wrapAngle(e.x());
-    float phi   = wrapAngle(e.y());
-    float theta = wrapAngle(e.z());
-
-    psi_deg   = psi;
-    phi_deg   = phi;
-    theta_deg = theta;
-  }
-
-  // Print at a lower rate so Serial doesn't break timing
-  if ((uint32_t)(nowUs - lastPrintUs) >= PRINT_PERIOD_US) {
+/* ---------- Compute + PRINT angles ---------- */
+if ((uint32_t)(nowUs - lastPrintUs) >= PRINT_PERIOD_US) {
     lastPrintUs += PRINT_PERIOD_US;
 
+    if (!imu1.isCalibrated()) {
+        Serial.println("IMU not calibrated");
+        return;
+    }
+
+    Quaternion q = imu1.getQuaternion();
+    Vec3 rod_b   = imu1.getRodAxisIMU();
+    Vec3 plane_b = imu1.getPlaneRefIMU();
+
+    // --- rotate body axes into world frame ---
+    Vec3 rod_w   = quatRotate(q, rod_b);
+    Vec3 plane_w = quatRotate(q, plane_b);
+
+    // θ: tilt from vertical (BNO055 Z axis points DOWN)
+    float psi = acosf(-rod_w.z);
+
+    // φ: azimuth of rod projection (BNO055 convention)
+    float theta = atan2f(rod_w.x, rod_w.y);
+
+    // ψ: spin about rod axis (use BNO055 vertical)
+    Vec3 z_w(0.0f, 0.0f, -1.0f);
+
+
+    Vec3 ref_w =
+        vecNormalize(z_w - vecDot(z_w, rod_w) * rod_w);
+
+    Vec3 plane_proj =
+        vecNormalize(plane_w - vecDot(plane_w, rod_w) * rod_w);
+
+    float phi = atan2f(
+        vecDot(rod_w, cross(ref_w, plane_proj)),
+        vecDot(ref_w, plane_proj)
+    );
+
+    // --- PRINT ---
     Serial.print("phi=");
-    Serial.print(phi_deg, 3);
+    Serial.print(phi * 180.0f / M_PI, 3);
     Serial.print(", theta=");
-    Serial.print(theta_deg, 3);
+    Serial.print(theta * 180.0f / M_PI, 3);
     Serial.print(", psi=");
-    Serial.println(psi_deg, 3);
-  }
+    Serial.println(psi * 180.0f / M_PI, 3);
+}
+
 
 }
 

@@ -5,16 +5,7 @@
 #include <math.h>
 #include <utility/imumaths.h>   // imu::Vector<3>
 
-/* =========================================================
-   System-wide state (TEMPORARY: kept here by request)
-   ========================================================= */
-struct Vec3;   // forward declaration
 
-struct SystemState {
-    Vec3 position;
-    Vec3 orientation;
-    uint32_t timestamp_ms;
-};
 
 /* =========================================================
    Generic 3D vector
@@ -31,6 +22,18 @@ struct Vec3 {
     // Interop with Adafruit IMU math
     Vec3(const imu::Vector<3>& v) : x(v.x()), y(v.y()), z(v.z()) {}
 };
+
+/* =========================================================
+   System-wide state 
+   ========================================================= */
+
+struct SystemState {
+    Vec3 position;
+    Vec3 orientation;
+    uint32_t timestamp_ms;
+};
+
+
 
 /* =========================================================
    Vec3 <-> Vec3 operators
@@ -141,6 +144,35 @@ struct Quaternion {
     float y;
     float z;
 };
+
+/* =========================================================
+   Cross product
+   ========================================================= */
+inline Vec3 cross(const Vec3& a, const Vec3& b)
+{
+    return Vec3(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    );
+}
+
+/* =========================================================
+   Quaternion-vector rotation
+   Rotate vector v by quaternion q (body -> world)
+   ========================================================= */
+inline Vec3 quatRotate(const Quaternion& q, const Vec3& v)
+{
+    // Using q * [0,v] * q_conj
+    Vec3 qv(q.x, q.y, q.z);
+
+    Vec3 t = 2.0f * cross(qv, v);
+    Vec3 v_rot =
+        v + q.w * t + cross(qv, t);
+
+    return v_rot;
+}
+
 
 /* =========================================================
    Globals (defined in vectors.cpp)

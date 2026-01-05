@@ -4,27 +4,6 @@
 #include <stdint.h>
 #include "vectors.h"
 
-/*
-  IMUaxisCalibration
-
-  Fully self-contained calibration of:
-    - rodAxisIMU  (rotation axis)
-    - planeRefIMU (in-plane reference)
-
-  Intended usage:
-
-    IMUaxisCalibration IMUCal;
-
-    IMUCal.begin();
-    while (IMUCal.calibrating()) {
-        IMUCal.update(gyro);
-        delay(10);
-    }
-
-    Vec3 rod  = IMUCal.rodAxis();
-    Vec3 ref  = IMUCal.planeRef();
-*/
-
 class IMUaxisCalibration {
 public:
     IMUaxisCalibration();
@@ -43,8 +22,17 @@ public:
     Vec3 planeRef() const;
 
 private:
+    // --- calibration stages ---
+    enum class CalStage {
+        IDLE,
+        ROD_AXIS,
+        PLANE_AXIS,
+        DONE
+    };
+
     // internal state
     bool active;
+    CalStage stage;            // <-- ADD THIS
     uint32_t startTimeMs;
     uint32_t sampleCount;
 
@@ -54,13 +42,8 @@ private:
 
     // parameters
     static constexpr uint32_t CAL_TIME_MS = 6000;
-    static constexpr float GYRO_THRESH   = 1e-3f;
-
-    // math helpers
-    static Vec3 normalize(const Vec3& v);
-    static float dot(const Vec3& a, const Vec3& b);
-    static Vec3 scale(const Vec3& v, float s);
-    static Vec3 subtract(const Vec3& a, const Vec3& b);
+    static constexpr uint32_t MIN_SAMPLES = 50;     // <-- ADD THIS
+    static constexpr float    GYRO_THRESH = 1e-4f;  // adjust as needed
 };
 
 #endif // IMU_AXIS_CALIBRATION_H

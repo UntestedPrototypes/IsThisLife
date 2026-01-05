@@ -2,104 +2,126 @@
 #include <Arduino.h>
 #include <math.h>
 
-Vec3 rodAxisIMU;
-Vec3 planeRefIMU;
-
+/* =========================================================
+   Constructor
+   ========================================================= */
 
 IMUaxisCalibration::IMUaxisCalibration()
 : active(false),
+  stage(CalStage::IDLE),
   startTimeMs(0),
   sampleCount(0),
-  gyroSum{0,0,0},
-  rodAxisIMU{0,0,0},
-  planeRefIMU{0,0,0}
+  gyroSum(0.0f, 0.0f, 0.0f),
+  rodAxisIMU(0.0f, 0.0f, 0.0f),
+  planeRefIMU(0.0f, 0.0f, 0.0f)
 {}
 
-void IMUaxisCalibration::begin() {
-    gyroSum = {0,0,0};
+/* =========================================================
+   Start calibration
+   ========================================================= */
+
+void IMUaxisCalibration::begin()
+{
+    gyroSum = Vec3(0.0f, 0.0f, 0.0f);
     sampleCount = 0;
     active = true;
+    stage = CalStage::ROD_AXIS;
     startTimeMs = millis();
 
-    Serial.println("IMU axis calibration started");
-    Serial.println("Rotate internal plane about rod axis");
+    Serial.println("IMU calibration: STAGE 1");
+    Serial.println("Rotate about ROD AXIS");
 }
 
-void IMUaxisCalibration::update(const Vec3& gyro) {
+/* =========================================================
+   Update (call repeatedly with gyro samples)
+   ========================================================= */
 
+void IMUaxisCalibration::update(const Vec3& gyro)
+{
     if (!active) return;
 
-    float mag = sqrtf(gyro.x*gyro.x +
-                      gyro.y*gyro.y +
-                      gyro.z*gyro.z);
+    const uint32_t now = millis();
 
-    // accumulate only meaningful rotation
-    if (mag > GYRO_THRESH) {
-        gyroSum.x += gyro.x;
-        gyroSum.y += gyro.y;
-        gyroSum.z += gyro.z;
-        sampleCount++;
-    }
+    /* ---------- STAGE 1: Rod axis calibration ---------- */
+    if (stage == CalStage::ROD_AXIS) {
 
-    // wait until calibration window expires
-    if (millis() - startTimeMs < CAL_TIME_MS) return;
+        float mag = vecNorm(gyro);
+        if (mag > GYRO_THRESH) {
+            gyroSum += vecNormalize(gyro);   // accumulate direction
+            sampleCount++;
+        }
 
-    // require sufficient motion
-    if (sampleCount < 50) {
-        begin(); // restart
+        if (now - startTimeMs < CAL_TIME_MS) return;
+
+        if (sampleCount < MIN_SAMPLES) {
+            begin();   // restart stage 1
+            return;
+        }
+
+        rodAxisIMU = vecNormalize(gyroSum);
+
+        // prepare stage 2
+        gyroSum = Vec3(0.0f, 0.0f, 0.0f);
+        sampleCount = 0;
+        startTimeMs = now;
+        stage = CalStage::PLANE_AXIS;
+
+        Serial.println("IMU calibration: STAGE 2");
+        Serial.println("Rotate about PLANE (secondary) AXIS");
         return;
     }
 
-    // rod axis from average rotation axis
-    rodAxisIMU = normalize(gyroSum);
+    /* ---------- STAGE 2: Plane reference axis calibration ---------- */
+    if (stage == CalStage::PLANE_AXIS) {
 
-    // construct plane reference automatically
-    Vec3 candidate = {1.0f, 0.0f, 0.0f};
-    if (fabs(dot(candidate, rodAxisIMU)) > 0.9f) {
-        candidate = {0.0f, 1.0f, 0.0f};
+        // remove rod-axis component
+        Vec3 omega_perp =
+            gyro - vecDot(gyro, rodAxisIMU) * rodAxisIMU;
+
+        float mag = vecNorm(omega_perp);
+        if (mag > GYRO_THRESH) {
+            gyroSum += vecNormalize(omega_perp);
+            sampleCount++;
+        }
+
+        if (now - startTimeMs < CAL_TIME_MS) return;
+
+        if (sampleCount < MIN_SAMPLES) {
+            // restart stage 2 only
+            gyroSum = Vec3(0.0f, 0.0f, 0.0f);
+            sampleCount = 0;
+            startTimeMs = now;
+            return;
+        }
+
+        planeRefIMU = vecNormalize(gyroSum);
+
+        active = false;
+        stage = CalStage::DONE;
+
+        Serial.println("IMU axis calibration finished");
     }
-
-    planeRefIMU = subtract(
-        candidate,
-        scale(rodAxisIMU, dot(candidate, rodAxisIMU))
-    );
-    planeRefIMU = normalize(planeRefIMU);
-
-    active = false;
-
-    Serial.println("IMU axis calibration finished");
 }
 
-bool IMUaxisCalibration::calibrating() const {
+/* =========================================================
+   Status
+   ========================================================= */
+
+bool IMUaxisCalibration::calibrating() const
+{
     return active;
 }
 
-Vec3 IMUaxisCalibration::rodAxis() const {
+/* =========================================================
+   Results
+   ========================================================= */
+
+Vec3 IMUaxisCalibration::rodAxis() const
+{
     return rodAxisIMU;
 }
 
-Vec3 IMUaxisCalibration::planeRef() const {
+Vec3 IMUaxisCalibration::planeRef() const
+{
     return planeRefIMU;
-}
-
-/* =========================
-   Math helpers
-   ========================= */
-
-Vec3 IMUaxisCalibration::normalize(const Vec3& v) {
-    float n = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
-    if (n < 1e-6f) return {0,0,0};
-    return { v.x/n, v.y/n, v.z/n };
-}
-
-float IMUaxisCalibration::dot(const Vec3& a, const Vec3& b) {
-    return a.x*b.x + a.y*b.y + a.z*b.z;
-}
-
-Vec3 IMUaxisCalibration::scale(const Vec3& v, float s) {
-    return { s*v.x, s*v.y, s*v.z };
-}
-
-Vec3 IMUaxisCalibration::subtract(const Vec3& a, const Vec3& b) {
-    return { a.x - b.x, a.y - b.y, a.z - b.z };
 }
