@@ -313,10 +313,10 @@ if ((uint32_t)(nowUs - lastPrintUs) >= PRINT_PERIOD_US) {
     Vec3 plane_w = quatRotate(q, plane_b);
 
     // θ: tilt from vertical (BNO055 Z axis points DOWN)
-    float psi = acosf(-rod_w.z);
+    float theta = acosf(-rod_w.z);
 
     // φ: azimuth of rod projection (BNO055 convention)
-    float theta = atan2f(rod_w.x, rod_w.y);
+    float phi = atan2f(rod_w.x, rod_w.y);
 
     // ψ: spin about rod axis (use BNO055 vertical)
     Vec3 z_w(0.0f, 0.0f, -1.0f);
@@ -328,7 +328,7 @@ if ((uint32_t)(nowUs - lastPrintUs) >= PRINT_PERIOD_US) {
     Vec3 plane_proj =
         vecNormalize(plane_w - vecDot(plane_w, rod_w) * rod_w);
 
-    float phi = atan2f(
+    float psi = atan2f(
         vecDot(rod_w, cross(ref_w, plane_proj)),
         vecDot(ref_w, plane_proj)
     );
