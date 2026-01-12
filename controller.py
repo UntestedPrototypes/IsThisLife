@@ -43,11 +43,12 @@ while True:
     if now - last_send >= SEND_PERIOD:
         pygame.event.pump()
 
-        x = js.get_axis(0)   # left stick X
-        y = js.get_axis(1)   # left stick Y
+        y = js.get_axis(0)   # left stick X
+        x = js.get_axis(1)   # left stick Y
 
         payload = f"{x:.3f},{y:.3f}"
         msg = ESP_ID + payload   # <RID><PAYLOAD>
+        # print(msg)
 
         sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
         last_send = now
