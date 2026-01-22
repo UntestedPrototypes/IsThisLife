@@ -20,40 +20,43 @@ sock.bind(("", UDP_PORT))
 sock.setblocking(False)
 
 # ---------- Controller ----------
-pygame.init()
-pygame.joystick.init()
+# pygame.init()
+# pygame.joystick.init()
 
-if pygame.joystick.get_count() == 0:
-    raise RuntimeError("No controller detected")
+# if pygame.joystick.get_count() == 0:
+#     raise RuntimeError("No controller detected")
 
-js = pygame.joystick.Joystick(0)
-js.init()
+# js = pygame.joystick.Joystick(0)
+# js.init()
 
-print("Controller detected:", js.get_name())
-print("Sending joystick to ESP32 ID =", ESP_ID)
-print("Listening for messages to ID 0...\n")
+# print("Controller detected:", js.get_name())
+# print("Sending joystick to ESP32 ID =", ESP_ID)
+# print("Listening for messages to ID 0...\n")
 
-last_send = 0.0
+# last_send = 0.0
 
 # ---------- Main loop ----------
+msg = LAPTOP_ID + "ping"
+sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
 while True:
     now = time.time()
 
     # ----- SEND joystick posXY -----
-    if now - last_send >= SEND_PERIOD:
-        pygame.event.pump()
+    # if now - last_send >= SEND_PERIOD:
+    #     pygame.event.pump()
 
-        y = js.get_axis(0)   # left stick X
-        x = js.get_axis(1)   # left stick Y
+    #     y = js.get_axis(0)   # left stick X
+    #     x = js.get_axis(1)   # left stick Y
 
-        payload = f"{x:.3f},{y:.3f}"
-        msg = ESP_ID + payload   # <RID><PAYLOAD>
-        # print(msg)
+    #     payload = f"{x:.3f},{y:.3f}"
+    #     msg = ESP_ID + payload   # <RID><PAYLOAD>
+    #     # print(msg)
 
-        sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
-        last_send = now
+    #     sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
+    #     last_send = now
 
     # ----- RECEIVE ESP32 messages -----
+
     ready, _, _ = select.select([sock], [], [], 0)
     if ready:
         data, addr = sock.recvfrom(1024)

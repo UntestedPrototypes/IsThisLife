@@ -12,7 +12,9 @@
 // ================= WIFI / UDP =================
 const char* WIFI_SSID = "isthislife?";
 const char* WIFI_PASS = "Admin1234";
+IPAddress broadcastIP(255,255,255,255);
 const uint16_t UDP_PORT = 4210;
+
 #define ESP32_ID '1'
 
 // ================= MOTOR PINS =================
@@ -89,17 +91,21 @@ float vBatt = NAN;
 float x = 0.0f;
 float y = 0.0f;
 
+Vec3 anglesR;
+Vec3 anglesL;
+
 // ================= HELPERS =================
 static inline int clampInt(int v, int lo, int hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
 }
 
 void sendToLaptop(const String& msg) {
-    udp.beginPacket(udp.remoteIP(), udp.remotePort());
+    udp.beginPacket(broadcastIP, UDP_PORT);
     udp.print('0');
     udp.print(msg);
     udp.endPacket();
 }
+
 
 // ================= MOTOR CONTROL =================
 void applyMotorControl(motorChannel& m, Servo& s, float input) {
@@ -107,6 +113,7 @@ void applyMotorControl(motorChannel& m, Servo& s, float input) {
         s.writeMicroseconds(m.neutral_us);
         return;
     }
+
 
     if (m.direction_inverted) input = -input;
 
@@ -139,11 +146,47 @@ void parseUdp() {
 
     sscanf(&rxBuf[1], "%f,%f", &x, &y);
 }
+bool checkI2CDevicesAndReport() {
+    struct Dev {
+        uint8_t addr;
+        const char* name;
+    };
+
+    Dev devices[] = {
+        {0x28, "IMU_R"},
+        {0x29, "IMU_L"},
+        {0x18, "INA219"},
+        {0x40, "MCP9808"},
+    };
+
+    bool all_ok = true;
+    String msg = "I2C_ACK";
+
+    for (auto& d : devices) {
+        Wire.beginTransmission(d.addr);
+        uint8_t err = Wire.endTransmission();
+
+        if (err != 0) {
+            all_ok = false;
+            msg += ",FAIL_";
+            msg += d.name;
+        }
+    }
+
+    if (!all_ok) {
+        sendToLaptop(msg);
+    } else {
+        sendToLaptop("I2C_ACK,OK");
+    }
+
+    return all_ok;
+}
 
 // ================= SETUP =================
 void setup() {
     Serial.begin(115200);
-
+    delay(1000);
+    Serial.println("ESP32 Starting...");
     mainServo.attach(MAIN_MOTOR_PIN, mainMotor.min_us, mainMotor.max_us);
     servoLeft.attach(SERVO_L_PIN, servoL.min_us, servoL.max_us);
     servoRight.attach(SERVO_R_PIN, servoR.min_us, servoR.max_us);
@@ -155,22 +198,27 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     while (WiFi.status() != WL_CONNECTED) delay(200);
+    Serial.println("WiFi connected");
 
     udp.begin(UDP_PORT);
 
     Wire.begin();
-
+    checkI2CDevicesAndReport();
+    sendToLaptop("I2C_INIT");
     imuR_ok = imuR.begin();
-    imuL_ok = imuL.begin();
+    imuL_ok = imuL.begin(); 
     mcp_ok  = mcp.begin();
     ina_ok  = ina219.begin();
 
     sendToLaptop("ESP32_READY");
+
+
 }
 
 // ================= LOOP =================
 void loop() {
-
+    // Serial.println("Loop start");
+    // sendToLaptop("LOOP_START");
     // ---- ALWAYS parse UDP ----
     parseUdp();
 
@@ -188,7 +236,12 @@ void loop() {
         x = 0.0f;
         y = 0.0f;
     }
-
+    temp = mcp.readTempC();
+    vBatt = ina219.getBusVoltage_V();
+    imu::Vector<3> eulerR = imuR.getVector(Adafruit_BNO055::VECTOR_EULER);
+    anglesR = Vec3(eulerR.x(), eulerR.y(), eulerR.z());
+    imu::Vector<3> eulerL = imuL.getVector(Adafruit_BNO055::VECTOR_EULER);
+    anglesL = Vec3(eulerL.x(), eulerL.y(), eulerL.z());
     // ---- Apply control ----
     applyXY(x, y);
 
@@ -197,8 +250,12 @@ void loop() {
                  ",Y" + String(y, 2) +
                  ",Temp" + String(temp, 1) +
                  ",Batt" + String(vBatt, 2);
+
+    msg = "temp," + String(temp, 1) + ",batt," + String(vBatt, 2)+ 
+                  ",imuR," + String(anglesR.x, 1) + "," + String(anglesR.y, 1) + "," + String(anglesR.z, 1) +
+                  ",imuL," + String(anglesL.x, 1) + "," + String(anglesL.y, 1) + "," + String(anglesL.z, 1);
     sendToLaptop(msg);
 
     // ---- Yield to WiFi task ----
-    delay(1);
+    delay(1000);
 }
