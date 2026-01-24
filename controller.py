@@ -48,7 +48,7 @@ while True:
         y = js.get_axis(0)   # left stick X
         x = js.get_axis(1)   # left stick Y
 
-        payload = f"{x:.3f},{y:.3f}"
+        payload = f"{-x:.3f},{-y:.3f}"
         msg = ESP_ID + payload   # <RID><PAYLOAD>
         # print(msg)
 

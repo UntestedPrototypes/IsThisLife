@@ -14,7 +14,7 @@ This list contains relevant components for
 | Main body                   | Printed in PLA                                         |
 | Secondary Axis              | Printed in PLA                                         |
 | Electronic Speed Controller | QuicRun WP10BL120 G2 Brushless ESC 120A 2-4S LiPo      |
-| Main motor (Main Axis)      | Motor 5065 270kv (should be 140kv)                     |
+| Main motor (Main Axis)      | Motor 5065 140kv                                       |
 | Servos (Secondary Axis)     | TD-8125MG Waterproof Digital Servo - 25kg - Continuous |
 | Power Supply - Servos       | XL4016E1 Step-Down Buck Converter                      |
 | Batteries                   | 4S Lipo Battery 14.8V 120C 6500mAh with XT90           |
@@ -66,6 +66,13 @@ Example message to control robot: 10.3,0.5
 
 - udplisten.py allows you to just listen to messages in case you want to run it on another computer, but you can also just donwload any phone up and will be the same
 
+
+## IMU
+Using quaternions, apply transformation to get angles. Read Robot descriptio for further understanding of angles. Section 7 describes angles.
+
+-Esp32 boots up and starts calibrating. Calibration routine is super important for adequate behavior! I was sending one via controller input but it is advised to automate one.
+
+-PID needs to be tuned
 ## Additional Notes:
  - Controller.py will give you status info, temperature and battery voltage
  - I will roll some updates as I improve the code, in another branch I'm currently developing sensing with the IMUs which should make it nicer
