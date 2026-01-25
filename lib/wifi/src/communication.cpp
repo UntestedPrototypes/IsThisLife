@@ -8,8 +8,8 @@
 
 
 // ================= WIFI / UDP =================
-static const char* WIFI_SSID = "CCC";
-static const char* WIFI_PASS = "$4g5$Mhr9MKb";
+static const char* WIFI_SSID = "isthislife?";
+static const char* WIFI_PASS = "$Admin1234";
 static IPAddress broadcastIP(255, 255, 255, 255);
 static const uint16_t UDP_PORT = 4210;
 
