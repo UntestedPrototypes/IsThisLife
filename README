@@ -73,6 +73,73 @@ Using quaternions, apply transformation to get angles. Read Robot descriptio for
 -Esp32 boots up and starts calibrating. Calibration routine is super important for adequate behavior! I was sending one via controller input but it is advised to automate one.
 
 -PID needs to be tuned
+
+# IMU CALIBRATION 
+
+Purpose:
+This calibration teaches the system:
+1) The direction of the rod axis
+2) The reference direction of the rotating plane
+
+
+STEP 1 — ROD AXIS CALIBRATION
+--------------------------------
+Prompt:
+"Step 1: Rotate entire robot around the ROD axis."
+
+Action:
+- Hold the robot firmly
+- Rotate the entire robot around the main rod
+- Start with positive input->up in dpad should also reference front from espside
+- You may rotate back and forth
+
+
+Notes:
+- Rotation speed does not matter
+- Clear, deliberate motion is required
+- Small vibrations or shaking will be ignored
+
+
+
+STEP 2 — PLANE REFERENCE CALIBRATION
+--------------------------------
+Prompt:
+"Step 2: Spin the internal PLANE around its normal."
+
+Action:
+- You have a couple seconds to set to home position. Wait for "Collecting data for Plane Reference.." to start calibrating around second axis
+- Rotate the internal plane mechanism only
+- Keep the rod as stationary as possible
+- Start with positive input->assuming positive rod is front. use left->left in dpad
+
+Notes:
+- Motion similar to Step 1 will be ignored
+- Smooth, consistent rotation works best
+
+
+
+
+Zeroing
+--------------------------------
+Prompt:
+"Calibration Finished, go to zero position."
+
+- You have one second to go to home position.
+- Robot will use so to understand 0,0
+
+
+
+FAILURE MESSAGE
+--------------------------------
+"Failed: Not enough motion. Retrying..."
+
+If this appears:
+- Repeat the instructed motion
+- Use larger, clearer rotations
+- Avoid short or hesitant movements
+
+
+
 ## Additional Notes:
  - Controller.py will give you status info, temperature and battery voltage
  - I will roll some updates as I improve the code, in another branch I'm currently developing sensing with the IMUs which should make it nicer

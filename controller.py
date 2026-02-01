@@ -4,11 +4,12 @@ import time
 import select
 
 # ================= CONFIG =================
-ESP_ID = '1'        # ESP32 recipient ID
-LAPTOP_ID = '0'     # Laptop ID
+ESP_ID = '1'
+LAPTOP_ID = '0'
 UDP_PORT = 4210
 BROADCAST_IP = "255.255.255.255"
-SEND_HZ = 50        # joystick send rate
+SEND_HZ = 50
+DEADZONE = 0.15
 # =========================================
 
 SEND_PERIOD = 1.0 / SEND_HZ
@@ -30,32 +31,31 @@ js = pygame.joystick.Joystick(0)
 js.init()
 
 print("Controller detected:", js.get_name())
-print("Sending joystick to ESP32 ID =", ESP_ID)
-print("Listening for messages to ID 0...\n")
 
 last_send = 0.0
 
 # ---------- Main loop ----------
-msg = LAPTOP_ID + "ping"
-sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
 while True:
     now = time.time()
 
-    # ----- SEND joystick posXY -----
     if now - last_send >= SEND_PERIOD:
         pygame.event.pump()
 
-        y = js.get_axis(0)   # left stick X
-        x = js.get_axis(1)   # left stick Y
+        y = js.get_axis(0)
+        x = js.get_axis(1)
 
-        payload = f"{-x:.3f},{-y:.3f}"
-        msg = ESP_ID + payload   # <RID><PAYLOAD>
-        # print(msg)
+        # Deadzone gate
+        if abs(x) > DEADZONE or abs(y) > DEADZONE:
+            sx = -x
+            sy = -y
+        else:
+            sx = 0.0
+            sy = 0.0
 
+        payload = f"{sx:.3f},{sy:.3f}"
+        msg = ESP_ID + payload
         sock.sendto(msg.encode(), (BROADCAST_IP, UDP_PORT))
         last_send = now
-
-    # ----- RECEIVE ESP32 messages -----
 
     ready, _, _ = select.select([sock], [], [], 0)
     if ready:
@@ -65,8 +65,5 @@ while True:
         if not text:
             continue
 
-        recipient = text[0]
-        payload = text[1:]
-
-        if recipient == LAPTOP_ID:
-            print("ESP32:", payload)
+        if text[0] == LAPTOP_ID:
+            print("ESP32:", text[1:])
