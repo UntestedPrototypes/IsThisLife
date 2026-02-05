@@ -17,6 +17,7 @@ Adafruit_BNO055 imuL = Adafruit_BNO055(55, 0x28);
 Adafruit_BNO055 imuR = Adafruit_BNO055(56, 0x29);
 
 // ================= STATUS FLAGS =================
+bool wire_ok  = false;
 bool mcp_ok  = false;
 bool ina_ok  = false;
 bool imuL_ok = false;
@@ -26,33 +27,47 @@ bool imuR_ok = false;
 void setup() {
     Serial.begin(115200);
     delay(1000);
+    while (!Serial) {
+        delay(10); // tiny delay to avoid busy loop
+    }
+    delay(1000);
+
 
     Serial.println("\n================ SENSOR SELF TEST ================");
 
     // I2C Init
-    Wire.begin(SDA_PIN, SCL_PIN);
-    Wire.setClock(100000);
+    wire_ok = Wire.begin(SDA_PIN, SCL_PIN, 100000);
+    Serial.print("I2C Bus:         ");
+    Serial.println(wire_ok ? "PASS" : "FAIL");
     delay(500);
 
     // ---------- MCP9808 ----------
     mcp_ok = mcp.begin();
     Serial.print("MCP9808 Temperature Sensor: ");
     Serial.println(mcp_ok ? "PASS" : "FAIL");
+    delay(500);
+
 
     // ---------- INA219 ----------
     ina_ok = ina219.begin();
     Serial.print("INA219 Voltage Sensor:     ");
     Serial.println(ina_ok ? "PASS" : "FAIL");
+    delay(500);
+
 
     // ---------- IMU LEFT ----------
     imuL_ok = imuL.begin();
     Serial.print("IMU LEFT (0x28):           ");
     Serial.println(imuL_ok ? "PASS" : "FAIL");
+    delay(500);
+
 
     // ---------- IMU RIGHT ----------
     imuR_ok = imuR.begin();
     Serial.print("IMU RIGHT (0x29):          ");
     Serial.println(imuR_ok ? "PASS" : "FAIL");
+    delay(500);
+
 
     Serial.println("=================================================");
     Serial.println("Starting live sensor output...\n");
