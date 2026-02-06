@@ -22,6 +22,9 @@ Adafruit_INA219 ina219;
 uint8_t ESP32_ID = 1; // Used for ID '1' or raw 1
 float x = 0.0f;
 float y = 0.0f;
+bool button_pressed = false;
+bool emergency_stop;
+extern uint32_t lastValidUdpTime;
 const float radToDeg = 57.2958f;
 
 float temp  = NAN;
@@ -59,12 +62,37 @@ void apply_XY(float x, float y) {
     servoR.command(y);
 }
 
+void waitForButton(uint32_t timeoutMs = 30000) {
+    // Wait for button press from controller with timeout
+    button_pressed = false;
+    uint32_t startTime = millis();
+    
+    while (!button_pressed && millis() - startTime < timeoutMs) {
+        wiFiWatchdog();
+        parseUdp();
+        delay(10);
+    }
+    
+    if (!button_pressed) {
+        sendToLaptop("Button timeout - proceeding anyway");
+    }
+    button_pressed = false;
+}
+
 void applyPID(float x, float y) {
     // Map x and y to motor angle commands
     mainMotor.commandAngle(x, psiDeg);
-    // servoL.commandAngle(y, phiLDeg);
-    // servoR.commandAngle(y, phiRDeg);
+    servoL.commandAngle(y, phiLDeg);
+    servoR.commandAngle(y, phiRDeg);
 }
+
+void killMotors() {
+    // Emergency stop - cut all motor commands
+    apply_XY(0.0f, 0.0f);
+    applyPID(0.0f, 0.0f);
+    sendToLaptop("EMERGENCY STOP: Motors killed");
+}
+
 // ================= SETUP =================
 Vec3 zeroAngleL;
 Vec3 zeroAngleR;
@@ -110,6 +138,31 @@ bool zerod = false;
 void loop() {
     wiFiWatchdog();
     parseUdp(); // Updates x and y
+    
+    // Check for emergency stop or connection loss
+    if (emergency_stop) {
+        killMotors();
+        sendToLaptop("WAITING FOR RESET...");
+        // Stay in kill state until connection restored or system reset
+        while (emergency_stop) {
+            wiFiWatchdog();
+            parseUdp();
+            apply_XY(0.0f, 0.0f);
+            applyPID(0.0f, 0.0f);
+            delay(10);
+        }
+        sendToLaptop("Emergency stop cleared. Resuming operation.");
+        return;
+    }
+    
+    // Check for connection loss (2 second timeout)
+    if (lastValidUdpTime > 0 && checkConnectionTimeout(500)) {
+        killMotors();
+        sendToLaptop("CONTROLLER CONNECTION LOST - EMERGENCY STOP!");
+        emergency_stop = true;  // Force emergency stop
+        return;
+    }
+    
     if (mcp_ok)  temp  = mcp.readTempC();
     if (ina_ok)  vBatt = ina219.getBusVoltage_V();
     static uint32_t lastUpdate = 0;
@@ -128,9 +181,11 @@ void loop() {
         else {apply_XY(0.0f, 0.0f);}}
     else if (!imuL.isCalibrated() || !imuR.isCalibrated()) {
             sendToLaptop("Starting Calibration Move. Rotate Positive First!");
+            sendToLaptop("Press Acknowledge button to continue...");
+            waitForButton();
+            
             imuL.startCalibration();
             imuR.startCalibration();
-
 
             while (!imuL.isCalibrated() || !imuR.isCalibrated()) {
                 wiFiWatchdog();
@@ -142,12 +197,16 @@ void loop() {
                 delay(5);
             }
             sendToLaptop("Calibration Finished, go to zero position.");
+            sendToLaptop("Press Acknowledge button when ready...");
+            waitForButton();
             calibrated = millis();
         }
     else if (!zerod) {
         apply_XY(x, y);
         if (millis() - calibrated > 3000) {
-            sendToLaptop("At Zero Position, Resuming Normal Operation.");
+            sendToLaptop("At Zero Position, press Acknowledge to resume normal operation.");
+            waitForButton();
+            
             imuL.update();
             imuR.update();
             IMUAngles dataL = imuL.getAngles();
@@ -188,12 +247,18 @@ void loop() {
     if (millis() - lastLog > 2000) {
         lastLog = millis();
 
+        float estL = servoL.estimatedAngle();
+        float estR = servoR.estimatedAngle();
+
         String telemetry = "Psi:"   + String(psiDeg, 1) + 
-                           " | PhiL:" + String(phiLDeg, 1) + 
-                           " | PhiR:" + String(phiRDeg, 1) + 
-                           " | theta:" + String(thetaDeg, 1)+
-                            " | Temp:" + String(temp, 1) +
-                            " | Vbatt:" + String(vBatt, 2);
+                   " | PhiL:" + String(phiLDeg, 1) + 
+                   " | PhiR:" + String(phiRDeg, 1) + 
+                   " | theta:" + String(thetaDeg, 1)+
+                   " | EstL:" + String(estL, 1) +
+                   " | EstR:" + String(estR, 1) +
+                    " | Temp:" + String(temp, 1) +
+                    " | Vbatt:" + String(vBatt, 2) +
+                    " | EmergencyStop:" + String(emergency_stop ? "ON" : "OFF");
                            
         
         sendToLaptop(telemetry);

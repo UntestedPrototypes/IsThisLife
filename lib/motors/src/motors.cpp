@@ -24,7 +24,10 @@ MotorChannel::MotorChannel(uint8_t pin,
   _i_accum(0.0f),
   _prev_error(0.0f),
   _prev_us(0),
-  _pid_init(false)
+  _pid_init(false),
+  _estimated_angle_deg(0.0f),
+  _last_update_us(0),
+  _failsafe_enabled(false)
 {}
 
 bool MotorChannel::begin() {
@@ -105,6 +108,30 @@ uint16_t MotorChannel::command(float controlNorm) {
   if (controlNorm > 1.0f)  controlNorm = 1.0f;
   if (controlNorm < -1.0f) controlNorm = -1.0f;
 
+  // --- FAIL-SAFE ANGLE ESTIMATION ---
+  if (_failsafe_enabled) {
+    const uint32_t now_us = micros();
+    float dt = 0.0f;
+
+    if (_last_update_us != 0) {
+      const uint32_t du = now_us - _last_update_us;
+      dt = (du > 0) ? (du * 1e-6f) : 0.0f;
+    }
+    _last_update_us = now_us;
+
+    // Approximate degrees/sec at full command
+    const float MAX_DEG_PER_SEC = 90.0f;  // conservative estimate
+    float omega = controlNorm * MAX_DEG_PER_SEC;
+
+    _estimated_angle_deg += omega * dt;
+
+    // Enforce hard limits
+    if (_estimated_angle_deg > 45.0f || _estimated_angle_deg < -45.0f) {
+      _estimated_angle_deg = constrain(_estimated_angle_deg, -45.0f, 45.0f);
+      return writeNeutral();  // STOP MOTOR IMMEDIATELY
+    }
+  }
+
   uint16_t pulse = computePulse(controlNorm);
   return writeMicroseconds(pulse);
 }
@@ -127,7 +154,7 @@ uint16_t MotorChannel::commandAngle(float commandNorm, float measuredAngle) {
 
   // map to target angle
   const float targetAngle = commandNorm * _angle_range;
-  sendToLaptop("Target Angle: " + String(targetAngle) + ", Measured Angle: " + String(measuredAngle));
+  //sendToLaptop("Target Angle: " + String(targetAngle) + ", Measured Angle: " + String(measuredAngle));
   // dt
   const uint32_t now_us = micros();
   float dt = 0.0f;
@@ -163,6 +190,14 @@ uint16_t MotorChannel::commandAngle(float commandNorm, float measuredAngle) {
   if (u > 1.0f)  u = 1.0f;
   if (u < -1.0f) u = -1.0f;
 
+  // Prevent PID from fighting the failsafe
+  if (_failsafe_enabled) {
+    if ((_estimated_angle_deg >= 45.0f && u > 0.0f) ||
+        (_estimated_angle_deg <= -45.0f && u < 0.0f)) {
+      return writeNeutral();
+    }
+  }
+
   return command(u);
 }
 
@@ -174,6 +209,19 @@ uint16_t MotorChannel::writeMicroseconds(uint16_t pulse) {
   _last_pulse = pulse;
   if (_servo.attached()) _servo.writeMicroseconds(pulse);
   return pulse;
+}
+
+void MotorChannel::resetAngleEstimate() {
+  _estimated_angle_deg = 0.0f;
+  _last_update_us = micros();
+}
+
+void MotorChannel::enableFailsafe(bool enable) {
+  _failsafe_enabled = enable;
+}
+
+float MotorChannel::estimatedAngle() const {
+  return _estimated_angle_deg;
 }
 
 uint16_t MotorChannel::computePulse(float controlNorm) const {

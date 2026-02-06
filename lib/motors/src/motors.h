@@ -48,6 +48,10 @@ public:
   uint16_t writeNeutral();
   uint16_t writeMicroseconds(uint16_t pulse);
 
+  void resetAngleEstimate();
+  void enableFailsafe(bool enable);
+  float estimatedAngle() const;
+
   // Getters
   uint8_t  pin() const;
   uint16_t minUs() const;
@@ -78,6 +82,11 @@ private:
   float    _prev_error;   // previous error
   uint32_t _prev_us;      // previous micros timestamp
   bool     _pid_init;
+
+  // Fail-safe: software-only angle estimate (degrees) and control
+  float    _estimated_angle_deg; // estimated angle from neutral (deg)
+  uint32_t _last_update_us;      // last timestamp for estimate
+  bool     _failsafe_enabled;    // enable/disable the software failsafe
 
   Servo    _servo;        // from ESP32Servo
 };

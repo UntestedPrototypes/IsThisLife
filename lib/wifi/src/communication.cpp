@@ -8,8 +8,8 @@
 
 
 // ================= WIFI / UDP =================
-static const char* WIFI_SSID = "isthislife?";
-static const char* WIFI_PASS = "$Admin1234";
+static const char* WIFI_SSID = "Nothing(2)";
+static const char* WIFI_PASS = "B13pB00pY33t";
 static IPAddress broadcastIP(255, 255, 255, 255);
 static const uint16_t UDP_PORT = 4210;
 
@@ -19,6 +19,9 @@ static const uint16_t UDP_PORT = 4210;
 static WiFiUDP udp;
 static char rxBuf[128];
 static uint32_t lastWifiOkMs = 0;
+
+// ================= PUBLIC STATE =================
+uint32_t lastValidUdpTime = 0;
 
 // ================= WIFI INIT =================
 void wiFiInit() {
@@ -78,6 +81,7 @@ void parseUdp() {
 
     rxBuf[len] = 0; // Null-terminate for safety
 
+
     // --- HYBRID ID CHECK ---
     // myIdChar turns number 1 into character '1' (decimal 49)
     char myIdChar = (char)('0' + ESP32_ID); 
@@ -87,10 +91,41 @@ void parseUdp() {
         return;
     }
 
-    // Parse starting from index 1 (skips the ID byte)
-    if (sscanf(&rxBuf[1], "%f,%f", &x, &y) == 2) {
-        // Only send confirmation if the parse was successful
-        // sendToLaptop("Received command: x=" + String(x) + ", y=" + String(y));
+    // Update last valid UDP timestamp
+    lastValidUdpTime = millis();
+
+    // Extract command byte (rxBuf[1])
+    char cmd = rxBuf[1];
+
+    // Check for emergency stop (format: "1E")
+    if (cmd == 'E') {
+        emergency_stop = true;
+        x = 0.0f;
+        y = 0.0f;
+        sendToLaptop("EMERGENCY STOP ACTIVATED!");
+        return;
+    }
+
+    // Check for emergency stop reset (format: "1R")
+    if (cmd == 'R') {
+        emergency_stop = false;
+        sendToLaptop("Emergency stop cleared - resuming normal operation");
+        return;
+    }
+
+    // Check for button press (format: "1B")
+    if (cmd == 'B') {
+        button_pressed = true;
+        sendToLaptop("Button acknowledged");
+        return;
+    }
+
+    // Check for control packet (format: "1X+0.123,-0.456")
+    if (cmd == 'X' && emergency_stop == false) {
+        if (sscanf(&rxBuf[2], "%f,%f", &x, &y) == 2) {
+            // Successfully parsed control values
+        }
+        return;
     }
 }
 
@@ -101,4 +136,13 @@ void wiFiWatchdog() {
   } else if (millis() - lastWifiOkMs > 3000) {
     ESP.restart();
   }
+}
+
+// ================= CONNECTION TIMEOUT CHECK =================
+bool checkConnectionTimeout(uint32_t timeoutMs) {
+  // Returns true if no valid UDP packet received within timeoutMs
+  if (lastValidUdpTime == 0) {
+    return false; // No packets received yet, not a timeout
+  }
+  return (millis() - lastValidUdpTime) > timeoutMs;
 }
