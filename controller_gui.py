@@ -10,7 +10,7 @@ import json
 import os
 
 # ================= CONFIG =================
-ESP_ID = '1'
+ESP_ID = '2'
 LAPTOP_ID = '0'
 UDP_PORT = 4210
 BROADCAST_IP = "255.255.255.255"
@@ -42,6 +42,10 @@ class ControllerGUI:
         self.running = True
         self.sending_enabled = True
         self.deadzone = DEADZONE
+        self.expo_x = 0.0
+        self.expo_y = 0.0
+        self.max_x = 1.0
+        self.max_y = 1.0
         self.messages = deque(maxlen=MAX_MESSAGES)
         self.last_send = 0.0
         self.x = 0.0
@@ -325,6 +329,47 @@ class ControllerGUI:
         self.input_display.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         scrollbar.config(command=self.input_display.yview)
         
+        # Axis Configuration Section
+        axis_config_frame = ttk.LabelFrame(main_frame, text="Axis Configuration", padding="10")
+        axis_config_frame.pack(fill=tk.X, pady=10)
+        axis_config_frame.columnconfigure(1, weight=1)
+        
+        # X Axis Expo
+        ttk.Label(axis_config_frame, text="X Axis Expo:", font=("Arial", 10)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.x_expo_scale = ttk.Scale(axis_config_frame, from_=0, to=1.0, orient=tk.HORIZONTAL, 
+                                      command=self.update_x_expo)
+        self.x_expo_scale.grid(row=0, column=1, sticky=(tk.E, tk.W), padx=5, pady=5)
+        self.x_expo_label = ttk.Label(axis_config_frame, text="0.00", font=("Arial", 10), width=6)
+        self.x_expo_label.grid(row=0, column=2, padx=5, pady=5)
+        self.x_expo_scale.set(self.expo_x)
+        
+        # X Axis Max
+        ttk.Label(axis_config_frame, text="X Axis Max:", font=("Arial", 10)).grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.x_max_scale = ttk.Scale(axis_config_frame, from_=0, to=2.0, orient=tk.HORIZONTAL, 
+                                     command=self.update_x_max)
+        self.x_max_scale.grid(row=1, column=1, sticky=(tk.E, tk.W), padx=5, pady=5)
+        self.x_max_label = ttk.Label(axis_config_frame, text="1.00", font=("Arial", 10), width=6)
+        self.x_max_label.grid(row=1, column=2, padx=5, pady=5)
+        self.x_max_scale.set(self.max_x)
+        
+        # Y Axis Expo
+        ttk.Label(axis_config_frame, text="Y Axis Expo:", font=("Arial", 10)).grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        self.y_expo_scale = ttk.Scale(axis_config_frame, from_=0, to=1.0, orient=tk.HORIZONTAL, 
+                                      command=self.update_y_expo)
+        self.y_expo_scale.grid(row=2, column=1, sticky=(tk.E, tk.W), padx=5, pady=5)
+        self.y_expo_label = ttk.Label(axis_config_frame, text="0.00", font=("Arial", 10), width=6)
+        self.y_expo_label.grid(row=2, column=2, padx=5, pady=5)
+        self.y_expo_scale.set(self.expo_y)
+        
+        # Y Axis Max
+        ttk.Label(axis_config_frame, text="Y Axis Max:", font=("Arial", 10)).grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.y_max_scale = ttk.Scale(axis_config_frame, from_=0, to=2.0, orient=tk.HORIZONTAL, 
+                                     command=self.update_y_max)
+        self.y_max_scale.grid(row=3, column=1, sticky=(tk.E, tk.W), padx=5, pady=5)
+        self.y_max_label = ttk.Label(axis_config_frame, text="1.00", font=("Arial", 10), width=6)
+        self.y_max_label.grid(row=3, column=2, padx=5, pady=5)
+        self.y_max_scale.set(self.max_y)
+        
         # Buttons frame
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.pack(fill=tk.X, pady=10)
@@ -433,6 +478,34 @@ class ControllerGUI:
         self.deadzone = float(value)
         self.deadzone_label.config(text=f"{self.deadzone:.2f}")
         self.draw_joystick()
+    
+    def update_x_expo(self, value):
+        """Update X axis expo curve"""
+        self.expo_x = float(value)
+        self.x_expo_label.config(text=f"{self.expo_x:.2f}")
+    
+    def update_x_max(self, value):
+        """Update X axis max output"""
+        self.max_x = float(value)
+        self.x_max_label.config(text=f"{self.max_x:.2f}")
+    
+    def update_y_expo(self, value):
+        """Update Y axis expo curve"""
+        self.expo_y = float(value)
+        self.y_expo_label.config(text=f"{self.expo_y:.2f}")
+    
+    def update_y_max(self, value):
+        """Update Y axis max output"""
+        self.max_y = float(value)
+        self.y_max_label.config(text=f"{self.max_y:.2f}")
+    
+    def apply_expo_curve(self, value, expo):
+        """Apply exponential curve to stick input (0 = linear, 1 = cubic)"""
+        if expo == 0:
+            return value
+        # Preserve sign and apply curve to absolute value
+        sign = 1 if value >= 0 else -1
+        return sign * (abs(value) ** (1 + expo))
     
     def toggle_sending(self):
         """Toggle command sending"""
@@ -645,6 +718,10 @@ class ControllerGUI:
             else:
                 sx = 0.0
                 sy = 0.0
+            
+            # Apply expo curve and max limits separately for X and Y
+            sx = self.apply_expo_curve(sx, self.expo_x) * self.max_x
+            sy = self.apply_expo_curve(sy, self.expo_y) * self.max_y
             
             # Send data
             if self.sending_enabled and now - self.last_send >= SEND_PERIOD:
