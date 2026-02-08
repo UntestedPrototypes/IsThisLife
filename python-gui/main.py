@@ -18,7 +18,19 @@ END_BYTE = 0x55
 PACKET_CONTROL = 0
 PACKET_ESTOP = 1
 PACKET_ESTOP_CLEAR = 2
+PACKET_CONFIRM = 4  # Confirmation packet
+PACKET_START_SEQUENCE = 6  # Start sequence
 ROBOT_ID = 1  # Default robot to control
+
+# ========== Sequence ID Definitions ==========
+# Match these with robot.cpp!
+SEQUENCE_CALIBRATION_FULL = 0
+SEQUENCE_CALIBRATION_GYRO = 1
+SEQUENCE_CALIBRATION_MOTORS = 2
+SEQUENCE_DEMO_DANCE = 3
+SEQUENCE_SENSOR_TEST = 4
+SEQUENCE_PATH_FOLLOW = 5
+# Add more sequences as needed...
 
 # -------------------- Pygame Controller --------------------
 pygame.init()
@@ -139,6 +151,32 @@ class TkDashboard:
             labels["ARM"] = arm_label
             row += 1
 
+            # ========== Sequence Buttons ==========
+            seq_label = tk.Label(group, text="Sequences:", font=("Arial", 9, "bold"))
+            seq_label.grid(row=row, column=0, columnspan=2, pady=(10, 5), sticky=tk.W)
+            row += 1
+            
+            # Calibration sequences
+            calib_frame = tk.LabelFrame(group, text="Calibration", padx=5, pady=3)
+            calib_frame.grid(row=row, column=0, columnspan=2, pady=2, sticky=tk.EW)
+            tk.Button(calib_frame, text="Full", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_CALIBRATION_FULL)).pack(side=tk.LEFT, padx=2)
+            tk.Button(calib_frame, text="Gyro", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_CALIBRATION_GYRO)).pack(side=tk.LEFT, padx=2)
+            tk.Button(calib_frame, text="Motors", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_CALIBRATION_MOTORS)).pack(side=tk.LEFT, padx=2)
+            row += 1
+            
+            # Demo sequences
+            demo_frame = tk.LabelFrame(group, text="Demo", padx=5, pady=3)
+            demo_frame.grid(row=row, column=0, columnspan=2, pady=2, sticky=tk.EW)
+            tk.Button(demo_frame, text="Dance", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_DEMO_DANCE)).pack(side=tk.LEFT, padx=2)
+            tk.Button(demo_frame, text="Sensors", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_SENSOR_TEST)).pack(side=tk.LEFT, padx=2)
+            tk.Button(demo_frame, text="Path", width=8,
+                     command=lambda rid=robot_id: send_start_sequence(rid, SEQUENCE_PATH_FOLLOW)).pack(side=tk.LEFT, padx=2)
+
             self.robot_widgets[robot_id] = labels
 
     # -------------------- GAME TAB --------------------
@@ -180,63 +218,73 @@ class TkDashboard:
         self.arm_bind_label.grid(row=4, column=1)
         tk.Button(binding_frame, text="Bind", command=lambda: self.start_learning_mode("arm")).grid(row=4, column=2)
 
-        self.live_values_label = tk.Label(frame, text="")
+        self.live_values_label = tk.Label(frame, text="Waiting for inputs...")
         self.live_values_label.pack(pady=5)
 
-        # Joystick visualization canvas
-        self.joy_canvas = tk.Canvas(frame, width=300, height=300, bg="#222")
-        self.joy_canvas.pack(pady=5)
-        self.joy_canvas.create_oval(50, 50, 250, 250, outline="white", width=2)  # Outer boundary
-        self.joy_thumb = self.joy_canvas.create_oval(145, 145, 155, 155, fill="cyan")  # Thumb indicator
+        self.joy_canvas = tk.Canvas(frame, width=300, height=300, bg="white")
+        self.joy_canvas.pack()
+        self.joy_canvas.create_oval(50, 50, 250, 250, outline="gray", width=2)
+        self.joy_thumb = self.joy_canvas.create_oval(145, 145, 155, 155, fill="blue")
 
-    # -------------------- Joystick Binding --------------------
-    def start_learning_mode(self, action_key):
+    def start_learning_mode(self, key):
         if not joystick:
+            messagebox.showwarning("No Joystick", "No joystick detected!")
             return
-        self.learning_mode = action_key
-        self.learning_timeout = time.time() + 5
+        self.learning_mode = key
+        self.learning_timeout = time.time() + 5.0
         self.learning_baseline_axes = [joystick.get_axis(i) for i in range(joystick.get_numaxes())]
-        getattr(self, f"{action_key}_bind_label").config(text="Waiting for input...", fg="red")
+        self.game_label.config(text=f"Learning {key.upper()}... Move input now!")
 
-    def detect_input(self):
-        if not joystick:
-            return None
-        pygame.event.pump()
-        for i in range(joystick.get_numbuttons()):
-            if joystick.get_button(i):
-                return ("button", i)
+    def check_learning_mode(self):
+        if not self.learning_mode or time.time() > self.learning_timeout:
+            if self.learning_mode:
+                self.game_label.config(text="Timeout, try again.")
+                self.learning_mode = None
+            return
+
+        key = self.learning_mode
         for i in range(joystick.get_numaxes()):
             val = joystick.get_axis(i)
-            baseline = self.learning_baseline_axes[i] if i < len(self.learning_baseline_axes) else 0.0
-            if abs(val) > 0.95 and abs(val - baseline) > 0.5:
-                return ("axis", i)
-        return None
+            if abs(val - self.learning_baseline_axes[i]) > 0.3:
+                self.mappings[key] = ("axis", i)
+                self.game_label.config(text=f"{key.upper()} mapped to Axis {i}")
+                label_map = {
+                    "vx": self.vx_bind_label,
+                    "vy": self.vy_bind_label,
+                    "omega": self.omega_bind_label,
+                    "estop": self.estop_bind_label,
+                    "arm": self.arm_bind_label
+                }
+                label_map[key].config(text=f"Axis {i}")
+                self.learning_mode = None
+                return
 
-    def process_learning_mode(self):
-        if not self.learning_mode:
-            return
-        if time.time() > self.learning_timeout:
-            getattr(self, f"{self.learning_mode}_bind_label").config(text=f"{self.learning_mode.upper()}", fg="black")
-            self.learning_mode = None
-            return
-        detected = self.detect_input()
-        if detected:
-            self.mappings[self.learning_mode] = detected
-            getattr(self, f"{self.learning_mode}_bind_label").config(text=f"{detected[0].capitalize()} {detected[1]}", fg="green")
-            self.learning_mode = None
+        for i in range(joystick.get_numbuttons()):
+            if joystick.get_button(i):
+                self.mappings[key] = ("button", i)
+                self.game_label.config(text=f"{key.upper()} mapped to Button {i}")
+                label_map = {
+                    "vx": self.vx_bind_label,
+                    "vy": self.vy_bind_label,
+                    "omega": self.omega_bind_label,
+                    "estop": self.estop_bind_label,
+                    "arm": self.arm_bind_label
+                }
+                label_map[key].config(text=f"Button {i}")
+                self.learning_mode = None
+                return
 
-    # -------------------- Game Controller Loop --------------------
     def update_game_controller(self):
-        if not joystick or not ser or not ser.is_open:
+        if not joystick:
             self.root.after(50, self.update_game_controller)
             return
 
-        self.process_learning_mode()
         pygame.event.pump()
+        self.check_learning_mode()
 
         def get_input(key):
-            typ, idx = self.mappings[key]
-            if typ == "axis":
+            t, idx = self.mappings[key]
+            if t == "axis":
                 return joystick.get_axis(idx)
             return joystick.get_button(idx)
 
@@ -284,6 +332,36 @@ class TkDashboard:
         y = cx + int(vx * radius)
         x = cy + int(-vy * radius)
         self.joy_canvas.coords(self.joy_thumb, x-5, y-5, x+5, y+5)
+
+    # ========== NEW: Show confirmation dialog ==========
+    def show_confirmation_dialog(self, robot_id, step_id, message):
+        """Show a dialog asking user to confirm a robot calibration step"""
+        def on_approve():
+            send_confirmation(robot_id, step_id, True)
+            dialog.destroy()
+        
+        def on_deny():
+            send_confirmation(robot_id, step_id, False)
+            dialog.destroy()
+        
+        # Create a modal dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Robot {robot_id} - Confirmation Required")
+        dialog.geometry("400x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        tk.Label(dialog, text=f"Robot {robot_id} requesting confirmation:", font=("Arial", 10, "bold")).pack(pady=10)
+        tk.Label(dialog, text=message, font=("Arial", 12)).pack(pady=5)
+        
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(pady=10)
+        
+        tk.Button(button_frame, text="✓ Approve", bg="green", fg="white", width=12, command=on_approve).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="✗ Deny", bg="red", fg="white", width=12, command=on_deny).pack(side=tk.LEFT, padx=5)
+        
+        # Log the request
+        self.debug_terminal.insert(tk.END, f">> Confirmation request from Robot {robot_id}: {message}\n")
 
     # -------------------- Periodic Control Loop for all robots --------------------
     def periodic_control_loop(self):
@@ -347,9 +425,25 @@ class TkDashboard:
                                 text = line.decode("utf-8", errors="replace").strip()
                                 if not text:
                                     continue
-                                if text.startswith("DEBUG:"):
+                                
+                                # ========== NEW: Handle confirmation request ==========
+                                if text.startswith("CONFIRM_REQ"):
+                                    parts = {}
+                                    for p in text.split():
+                                        if "=" in p:
+                                            key, val = p.split("=", 1)
+                                            parts[key] = val
+                                    
+                                    robot_id = int(parts.get("ID", 0))
+                                    step_id = int(parts.get("STEP", 0))
+                                    message = parts.get("MSG", "Unknown step")
+                                    
+                                    # Show confirmation dialog on main thread
+                                    self.root.after(0, lambda: self.show_confirmation_dialog(robot_id, step_id, message))
+                                
+                                elif text.startswith("DEBUG:"):
                                     self.debug_terminal.insert(tk.END, text + "\n")
-                                if text.startswith("Python"):
+                                elif text.startswith("Python"):
                                     self.debug_terminal.insert(tk.END, text + "\n")
                                 elif text.startswith("ID="):
                                     telemetry = {}
@@ -363,7 +457,18 @@ class TkDashboard:
                                     if robot_id in self.robot_widgets:
                                         labels = self.robot_widgets[robot_id]
                                         labels["HB"].config(text=f"{telemetry['HB']:03d}")
-                                        labels["STATUS"].config(text=f"{telemetry['STATUS']}")
+                                        
+                                        # ========== Show status text ==========
+                                        status = telemetry['STATUS']
+                                        if status == 3:  # STATUS_RUNNING_SEQUENCE
+                                            labels["STATUS"].config(text="RUNNING SEQ", fg="blue")
+                                        elif status == 2:  # STATUS_WAITING_CONFIRM
+                                            labels["STATUS"].config(text="WAITING", fg="orange")
+                                        elif status == 1:  # STATUS_ESTOP
+                                            labels["STATUS"].config(text="E-STOP", fg="red")
+                                        else:  # STATUS_OK
+                                            labels["STATUS"].config(text="OK", fg="green")
+                                        
                                         labels["BATT"].config(text=f"{telemetry['BATT']} mV")
                                         labels["TEMP"].config(text=f"{telemetry['TEMP']} C")
                                         labels["ERR"].config(text=f"0x{telemetry['ERR']:02X}")
@@ -382,10 +487,6 @@ class TkDashboard:
                                             text="ARMED" if arm_active else "UNARMED",
                                             fg="red" if arm_active else "green"
                                         )
-
-                                        # Optional: force the ARM state to False if E-STOP is active
-                                        # if not estop_off and self.robot_state[robot_id]["ARM"]:
-                                        #     self.robot_state[robot_id]["ARM"] = False
 
                             except Exception as e:
                                 self.debug_terminal.insert(tk.END, f"Serial parse error: {e}\n")
@@ -411,6 +512,33 @@ def send_estop():
 def send_arm():
     if ser and ser.is_open:
         ser.write(bytes([PACKET_ESTOP_CLEAR, ROBOT_ID]))
+
+# ========== NEW: Send confirmation response ==========
+def send_confirmation(robot_id, step_id, approved):
+    """Send confirmation response to robot"""
+    if ser and ser.is_open:
+        pkt = bytes([PACKET_CONFIRM, robot_id, step_id, 1 if approved else 0])
+        ser.write(pkt)
+        print(f"Sent confirmation: robot={robot_id} step={step_id} approved={approved}")
+
+# ========== Send start sequence command ==========
+def send_start_sequence(robot_id, sequence_id):
+    """Send command to start a sequence
+    
+    Available sequences:
+    - SEQUENCE_CALIBRATION_FULL (0): Full calibration
+    - SEQUENCE_CALIBRATION_GYRO (1): Gyro calibration only
+    - SEQUENCE_CALIBRATION_MOTORS (2): Motor test only
+    - SEQUENCE_DEMO_DANCE (3): Demo dance routine
+    - SEQUENCE_SENSOR_TEST (4): Test all sensors
+    - SEQUENCE_PATH_FOLLOW (5): Follow pre-programmed path
+    """
+    if ser and ser.is_open:
+        pkt = bytes([PACKET_START_SEQUENCE, robot_id, sequence_id])
+        ser.write(pkt)
+        print(f"Sent start sequence: robot={robot_id} sequence_id={sequence_id}")
+    else:
+        print("Error: Not connected to controller")
 
 # -------------------- MAIN --------------------
 if __name__ == "__main__":

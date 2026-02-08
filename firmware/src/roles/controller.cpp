@@ -67,9 +67,63 @@ void forwardTelemetryToPython(const AckTelemetryPacket &ack) {
     );
 }
 
+// ========== NEW: Forward confirmation request to Python ==========
+void forwardConfirmRequestToPython(const RequestConfirmPacket &req) {
+    // Send confirmation request as text line
+    Serial.printf(
+        "CONFIRM_REQ ID=%d STEP=%d MSG=%s\n",
+        req.robot_id,
+        req.step_id,
+        req.message
+    );
+}
+
+// ========== NEW: Send confirmation to robot ==========
+void sendConfirmation(uint8_t robot_id, uint8_t step_id, bool approved) {
+    if (robot_id < 1 || robot_id > NUM_ROBOTS) return;
+
+    ConfirmPacket pkt{};
+    pkt.type = PACKET_CONFIRM;
+    pkt.robot_id = robot_id;
+    pkt.heartbeat = heartbeatCounter;
+    pkt.step_id = step_id;
+    pkt.approved = approved;
+    
+    esp_now_send(robotMacs[robot_id-1], (uint8_t*)&pkt, sizeof(pkt));
+    Serial.printf("Sent CONFIRM to Robot %d: step=%d approved=%d\n", robot_id, step_id, approved);
+    heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
+}
+
+// ========== NEW: Send start sequence command ==========
+void sendStartSequence(uint8_t robot_id, uint8_t sequence_id) {
+    if (robot_id < 1 || robot_id > NUM_ROBOTS) return;
+
+    StartSequencePacket pkt{};
+    pkt.type = PACKET_START_SEQUENCE;
+    pkt.robot_id = robot_id;
+    pkt.heartbeat = heartbeatCounter;
+    pkt.sequence_id = sequence_id;
+    
+    esp_now_send(robotMacs[robot_id-1], (uint8_t*)&pkt, sizeof(pkt));
+    Serial.printf("Sent START_SEQUENCE to Robot %d: sequence_id=%d\n", robot_id, sequence_id);
+    heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
+}
 
 // -------------------- Robot → Controller --------------------
 void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
+    if (len < 1) return;
+    
+    uint8_t pkt_type = data[0];
+    
+    // ========== NEW: Handle confirmation request ==========
+    if (pkt_type == PACKET_REQUEST_CONFIRM && len >= sizeof(RequestConfirmPacket)) {
+        RequestConfirmPacket req{};
+        memcpy(&req, data, sizeof(req));
+        forwardConfirmRequestToPython(req);
+        return;
+    }
+    
+    // Handle telemetry
     if (len < sizeof(AckTelemetryPacket)) return;
 
     AckTelemetryPacket ack{};
@@ -188,6 +242,23 @@ void readSerialCommands() {
                 for (int i = 0; i < NUM_ROBOTS; i++)
                     if (esp_now_is_peer_exist(robotMacs[i]))
                         esp_now_send(robotMacs[i], (uint8_t*)&pkt, sizeof(pkt));
+                break;
+            }
+            // ========== NEW: Handle confirmation command from Python ==========
+            case PACKET_CONFIRM: {
+                if (Serial.available() >= 2) {
+                    uint8_t step_id = Serial.read();
+                    uint8_t approved = Serial.read();  // 0=deny, 1=approve
+                    sendConfirmation(robot_id, step_id, approved != 0);
+                }
+                break;
+            }
+            // ========== NEW: Handle start sequence command from Python ==========
+            case PACKET_START_SEQUENCE: {
+                if (Serial.available() >= 1) {
+                    uint8_t sequence_id = Serial.read();
+                    sendStartSequence(robot_id, sequence_id);
+                }
                 break;
             }
             default: {
