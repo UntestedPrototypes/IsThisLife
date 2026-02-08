@@ -52,6 +52,10 @@ void stopMotors() {
 
 // ========== NEW: Request confirmation from controller ==========
 void requestConfirmation(uint8_t step_id, const char* message) {
+    if (waitingForConfirmation) {
+        Serial.println("DEBUG: Already waiting for confirmation, ignoring new request");
+        return;
+    }
     RequestConfirmPacket req{};
     req.type = PACKET_REQUEST_CONFIRM;
     req.robot_id = ROBOT_ID;
@@ -118,15 +122,13 @@ void runSequenceStep() {
                     Serial.println("SEQ: Full calibration started - Initializing");
                     sendAckTelemetry(PACKET_CONTROL, 0, 0);
                     sequenceStepStartTime = millis();
-                    currentSequenceStep++;
                     requestConfirmation(1, "Start full calibration? This will disable the robot until complete.");  // Request confirmation before starting
+                    currentSequenceStep++;
                     break;
                 
                 case 1:
-                    if (waitingForConfirmation) {
-                        // Do nothing — motors already disabled
-                        return;
-                    }
+                    if (waitingForConfirmation) return;
+
                     if (elapsed > 2000) {
                         Serial.println("SEQ: Calibrating gyro");
                         // TODO: Add actual gyro calibration code here

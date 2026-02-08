@@ -428,18 +428,30 @@ class TkDashboard:
                                 
                                 # ========== NEW: Handle confirmation request ==========
                                 if text.startswith("CONFIRM_REQ"):
+                                    self.debug_terminal.insert(tk.END, text + "\n")
                                     parts = {}
-                                    for p in text.split():
-                                        if "=" in p:
-                                            key, val = p.split("=", 1)
-                                            parts[key] = val
-                                    
+
+                                    # Split only the fixed fields first
+                                    tokens = text.split(" ")
+                                    for t in tokens:
+                                        if t.startswith("ID="):
+                                            parts["ID"] = t.split("=", 1)[1]
+                                        elif t.startswith("STEP="):
+                                            parts["STEP"] = t.split("=", 1)[1]
+                                        elif t.startswith("MSG="):
+                                            # EVERYTHING after MSG= is the message
+                                            parts["MSG"] = text.split("MSG=", 1)[1]
+                                            break
+
                                     robot_id = int(parts.get("ID", 0))
                                     step_id = int(parts.get("STEP", 0))
                                     message = parts.get("MSG", "Unknown step")
-                                    
-                                    # Show confirmation dialog on main thread
-                                    self.root.after(0, lambda: self.show_confirmation_dialog(robot_id, step_id, message))
+
+                                    self.root.after(
+                                        0,
+                                        lambda r=robot_id, s=step_id, m=message:
+                                            self.show_confirmation_dialog(r, s, m)
+                                    )
                                 
                                 elif text.startswith("DEBUG:"):
                                     self.debug_terminal.insert(tk.END, text + "\n")
