@@ -93,12 +93,12 @@ class LiveViewTab:
         control_frame.pack(fill=tk.X, padx=5, pady=5)
         
         sequences = [
-            ("Full Calib", SEQUENCE_CALIBRATION_FULL),
-            ("Gyro Calib", SEQUENCE_CALIBRATION_GYRO),
-            ("Motor Test", SEQUENCE_CALIBRATION_MOTORS),
-            ("Dance", SEQUENCE_DEMO_DANCE),
-            ("Sensors", SEQUENCE_SENSOR_TEST),
-            ("Path Follow", SEQUENCE_PATH_FOLLOW),
+            ("...", SEQUENCE_CALIBRATION_FULL),
+            ("...", SEQUENCE_CALIBRATION_GYRO),
+            ("...", SEQUENCE_CALIBRATION_MOTORS),
+            ("...", SEQUENCE_DEMO_DANCE),
+            ("...", SEQUENCE_SENSOR_TEST),
+            ("...", SEQUENCE_PATH_FOLLOW),
         ]
         
         # Grid buttons
