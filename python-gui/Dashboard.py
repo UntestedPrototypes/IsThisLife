@@ -5,7 +5,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import json
 import os
-import time
 from config import *
 from robot_state import RobotStateManager
 from serial_reader import SerialReader
@@ -25,6 +24,9 @@ class Dashboard:
     def __init__(self, root):
         self.root = root
         self.root.title("Robot Controller Dashboard")
+        
+        # --- FIXED GEOMETRY CALL ---
+        # Only set here. Prevents window snapping.
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         
         # Load Global Config
@@ -170,21 +172,26 @@ class Dashboard:
         tk.Button(btn_frame, text="Deny", bg="red", command=on_deny).pack(side=tk.LEFT, padx=5)
     
     def _update_game_controller(self):
+        """Update game controller inputs and send commands"""
         self.game_tab.check_learning()
         self.game_tab.update_display_values()
         
+        # This call now handles UI updates internally and only when needed
         all_commands = self.game_tab.get_active_commands()
+        
         controlled_robot_ids = []
-
         assigned_robots = self.game_tab.assignments.keys()
         
+        # Safety Check: Disconnected controllers
         for robot_id in assigned_robots:
             if robot_id not in all_commands:
+                # Robot is assigned, but controller data missing (disconnected)
                 if not self.robot_state.is_estopped(robot_id):
                     print(f"SAFETY: Controller disconnected for Robot {robot_id} -> E-STOPPING")
                     packet_sender.send_estop(robot_id)
                     self.robot_state.set_estop(robot_id, True)
-                    self.game_tab._update_assignment_list()
+                    # No need to call _update_assignment_list here anymore, 
+                    # get_active_commands handled it.
 
         for robot_id, controls in all_commands.items():
             controlled_robot_ids.append(robot_id)
@@ -198,8 +205,6 @@ class Dashboard:
                 packet_sender.send_arm(robot_id)
             
             if self.robot_state.should_send_control(robot_id):
-                # Pass raw float values (-1.0 to 1.0)
-                # packet_sender now handles conversion to 1000-2000
                 packet_sender.send_control(
                     robot_id, 
                     controls["vx"], 
@@ -207,7 +212,6 @@ class Dashboard:
                     controls["omega"]
                 )
             else:
-                # 0.0 float -> 1500us (Center)
                 packet_sender.send_control(robot_id, 0.0, 0.0, 0.0)
 
         self.controlled_robot_ids = controlled_robot_ids
@@ -215,13 +219,10 @@ class Dashboard:
     
     def _periodic_control_loop(self):
         active_joystick_robots = getattr(self, 'controlled_robot_ids', [])
-        
         for robot_id in self.robot_state.get_all_robot_ids():
             if robot_id in active_joystick_robots:
                 continue
-            # Send neutral (1500us) to idle robots
             packet_sender.send_control(robot_id, 0.0, 0.0, 0.0)
-        
         self.root.after(CONTROL_UPDATE_RATE_MS, self._periodic_control_loop)
     
     def cleanup(self):

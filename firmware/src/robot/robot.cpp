@@ -61,41 +61,42 @@ void roleSetup() {
 void roleLoop() {
     uint32_t now = millis();
 
-    // Run sequence steps if active
-    if (sequenceActive) {
-        runSequenceStep();
-    }
+    // Existing Sequence Logic
+    if (sequenceActive) runSequenceStep();
 
-    // Check for confirmation timeout
+    // Existing Confirmation Logic
     checkConfirmationTimeout();
 
-    // Check heartbeat validity
+    // Existing Heartbeat Logic
     bool hb_ok = heartbeatValid();
 
+    // Check Error Flags for Safety
+    uint8_t errors = getErrorFlags();
+
+    // Check for error (Sensors failed or Battery Low)
+    if (errors != 0 && !estopActive) {
+        Serial.printf("CRITICAL ERROR (Flags: 0x%02X): Triggering Auto E-STOP\n", errors);
+        activateEstop();
+        cancelConfirmation();
+        stopSequence(); // Ensure sequence stops too
+        sendAckTelemetry(PACKET_ESTOP, 0, 0); // Notify controller immediately
+    }
+    // ----------------------------------------
+
+    // Existing Heartbeat E-STOP Logic
     if (!hb_ok && !estopActive) {
-        // Trigger E-STOP due to lost heartbeat
         Serial.println("DEBUG: E-STOP triggered due to lost heartbeat");
         activateEstop();
         cancelConfirmation();
-        
-        // Optionally send telemetry
         sendAckTelemetry(PACKET_ESTOP, 0, 0);
     }
 
-    // Keep motors stopped if E-STOP is active or running sequence
+    // Existing Motor Safety Logic
     if ((estopActive || sequenceActive || waitingForConfirmation) && motorsEnabled) {
         motorsEnabled = false;
         stopMotors();
     }
-    
-    // Periodic Connection Status Log (Only if Lost)
-    static uint32_t lastStatusLog = 0;
-    if (!hb_ok && (now - lastStatusLog > 2000)) { 
-        lastStatusLog = now;
-        Serial.printf("DEBUG: Status - Connection: LOST | E-STOP: %s | Batt: %d mV\n", 
-                      estopActive ? "ACTIVE" : "INACTIVE",
-                      readBattery());
-    }
+
 }
 
 #endif

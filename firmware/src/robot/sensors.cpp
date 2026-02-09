@@ -63,7 +63,7 @@ uint8_t getErrorFlags() {
     uint8_t flags = 0;
     if (!sensorsReady) flags |= 0x01; // Sensor init failed
     
-    // Example: Low voltage check
+    // Low voltage check
     if (readBattery() < 14800) flags |= 0x02; // Low Battery (<14.8V)
     
     return flags; 
