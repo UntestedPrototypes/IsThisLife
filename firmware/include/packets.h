@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 enum PacketType : uint8_t {
     PACKET_CONTROL = 0,
     PACKET_ESTOP = 1,
@@ -15,15 +17,16 @@ enum PacketType : uint8_t {
 #define STATUS_WAITING_CONFIRM 2  // Robot waiting for confirmation
 #define STATUS_RUNNING_SEQUENCE 3 // Robot is running a sequence
 
+// Updated for RC Control (1000-2000us)
 struct __attribute__((packed)) ControlPacket {
     uint8_t type;
     uint8_t priority;
     uint8_t robot_id;
     uint32_t heartbeat;
-    int8_t  vx;
-    int8_t  vy;
-    int8_t  omega;
-    uint16_t timestamp_ms;  // 16-bit timestamp for latency
+    uint16_t vx;            // Updated: 1000-2000 us (Throttle)
+    uint16_t vy;            // Updated: 1000-2000 us (Strafe/Steer)
+    uint16_t omega;         // Updated: 1000-2000 us (Rotation)
+    uint32_t timestamp_ms;  // Updated: 32-bit timestamp to avoid short wrap-around
 };
 
 struct __attribute__((packed)) AckTelemetryPacket {
@@ -37,7 +40,7 @@ struct __attribute__((packed)) AckTelemetryPacket {
     uint16_t latency_ms;    // round-trip latency
 };
 
-// New: Robot requests confirmation for a calibration step
+// Robot requests confirmation for a calibration step
 struct __attribute__((packed)) RequestConfirmPacket {
     uint8_t type;           // PACKET_REQUEST_CONFIRM
     uint8_t robot_id;
@@ -46,7 +49,7 @@ struct __attribute__((packed)) RequestConfirmPacket {
     char message[32];       // Description: "Calibrating gyro", "Testing motors", etc.
 };
 
-// New: Controller sends confirmation
+// Controller sends confirmation
 struct __attribute__((packed)) ConfirmPacket {
     uint8_t type;           // PACKET_CONFIRM
     uint8_t robot_id;
@@ -55,7 +58,7 @@ struct __attribute__((packed)) ConfirmPacket {
     bool approved;          // true = proceed, false = cancel
 };
 
-// New: Python initiates sequence
+// Python initiates sequence
 struct __attribute__((packed)) StartSequencePacket {
     uint8_t type;           // PACKET_START_SEQUENCE
     uint8_t robot_id;
@@ -71,4 +74,3 @@ struct __attribute__((packed)) StartSequencePacket {
 #define SEQUENCE_DEMO_DANCE         3
 #define SEQUENCE_SENSOR_TEST        4
 #define SEQUENCE_PATH_FOLLOW        5
-// Add more sequences as needed...

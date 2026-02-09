@@ -8,8 +8,11 @@
 void sendHeartbeat() {
     ControlPacket pkt{};
     pkt.type = PACKET_CONTROL;
-    pkt.robot_id = 0; // broadcast to all robots
-    pkt.vx = pkt.vy = pkt.omega = 0;
+    pkt.robot_id = 0; // broadcast
+    // IMPORTANT: Send Neutral (1500), not 0 (which is full reverse)
+    pkt.vx = RC_NEUTRAL;
+    pkt.vy = RC_NEUTRAL;
+    pkt.omega = RC_NEUTRAL;
     pkt.heartbeat = heartbeatCounter;
 
     for (int i = 0; i < NUM_ROBOTS; i++) {
@@ -28,7 +31,9 @@ void sendArmRobot(uint8_t robot_id) {
     pkt.type = PACKET_ESTOP_CLEAR;
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
-    pkt.vx = pkt.vy = pkt.omega = 0;
+    pkt.vx = RC_NEUTRAL;
+    pkt.vy = RC_NEUTRAL;
+    pkt.omega = RC_NEUTRAL;
     
     esp_now_send(robotMacs[robot_id-1], (uint8_t*)&pkt, sizeof(pkt));
     Serial.printf("Sent ARM command to Robot %d\n", robot_id);
@@ -42,7 +47,10 @@ void sendEstopRobot(uint8_t robot_id) {
     pkt.type = PACKET_ESTOP;
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
-    pkt.vx = pkt.vy = pkt.omega = 0;
+    // Safety: Ensure motors are neutral in the packet, though Robot should ignore
+    pkt.vx = RC_NEUTRAL;
+    pkt.vy = RC_NEUTRAL;
+    pkt.omega = RC_NEUTRAL;
     
     esp_now_send(robotMacs[robot_id-1], (uint8_t*)&pkt, sizeof(pkt));
     Serial.printf("Sent E-STOP to Robot %d\n", robot_id);
@@ -78,7 +86,7 @@ void sendStartSequence(uint8_t robot_id, uint8_t sequence_id) {
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }
 
-void sendControlCommand(uint8_t robot_id, int8_t vx, int8_t vy, int8_t omega) {
+void sendControlCommand(uint8_t robot_id, uint16_t vx, uint16_t vy, uint16_t omega) {
     ControlPacket pkt{};
     pkt.type = PACKET_CONTROL;
     pkt.robot_id = robot_id;
@@ -86,7 +94,7 @@ void sendControlCommand(uint8_t robot_id, int8_t vx, int8_t vy, int8_t omega) {
     pkt.vy = vy;
     pkt.omega = omega;
     pkt.heartbeat = heartbeatCounter;
-    pkt.timestamp_ms = millis() & 0xFFFF;
+    pkt.timestamp_ms = millis(); // Updated to uint32_t in packets.h
 
     if (robot_id == 0) { // broadcast
         for (int i = 0; i < NUM_ROBOTS; i++) {
@@ -105,6 +113,9 @@ void sendDiscover() {
     ControlPacket pkt{};
     pkt.type = PACKET_DISCOVER;
     pkt.robot_id = 0;
+    pkt.vx = RC_NEUTRAL;
+    pkt.vy = RC_NEUTRAL;
+    pkt.omega = RC_NEUTRAL;
     
     for (int i = 0; i < NUM_ROBOTS; i++) {
         if (esp_now_is_peer_exist(robotMacs[i])) {

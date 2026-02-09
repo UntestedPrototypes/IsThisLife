@@ -13,7 +13,7 @@
 #include <string.h>
 
 void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
-    if (len < 1) return;  // Need at least the type byte
+    if (len < 1) return;
     
     uint8_t pkt_type = data[0];
     
@@ -21,7 +21,6 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
     if (pkt_type == PACKET_CONFIRM && len >= sizeof(ConfirmPacket)) {
         ConfirmPacket confirm{};
         memcpy(&confirm, data, sizeof(confirm));
-        
         if (confirm.robot_id == ROBOT_ID) {
             handleConfirmation(confirm.step_id, confirm.approved);
         }
@@ -32,7 +31,6 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
     if (pkt_type == PACKET_START_SEQUENCE && len >= sizeof(StartSequencePacket)) {
         StartSequencePacket seq{};
         memcpy(&seq, data, sizeof(seq));
-        
         if (seq.robot_id == ROBOT_ID) {
             startSequence(seq.sequence_id);
         }
@@ -47,8 +45,6 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
     
     ControlPacket pkt{};
     memcpy(&pkt, data, sizeof(pkt));
-
-    //Serial.printf("DEBUG: Packet received - type=%d robot_id=%d vx=%d vy=%d omega=%d hb=%u\n", pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
 
     if (pkt.robot_id != 0 && pkt.robot_id != ROBOT_ID) return;
 
@@ -83,7 +79,6 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
                 controlPacketCount = 0;
             }
 
-            // Block motor commands while running sequence or waiting for confirmation
             if (sequenceActive || waitingForConfirmation) {
                 motorsEnabled = false;
                 stopMotors();
@@ -105,7 +100,9 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
             } else {
                 Serial.print("DEBUG: E-STOP active ");
             }
-            Serial.printf(" - type=%d robot_id=%d vx=%d vy=%d omega=%d hb=%u\n", pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
+            // Updated format specifiers for uint16_t (%u)
+            Serial.printf(" - type=%d robot_id=%d vx=%u vy=%u omega=%u hb=%u\n", 
+                          pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
             break;
             
         default:

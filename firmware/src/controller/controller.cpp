@@ -11,7 +11,7 @@
 #include "serial_parser.h"
 #include "espnow_handler.h"
 #include "peer_management.h"
-#include "heartbeat_manager.h"
+// #include "heartbeat_manager.h" // Removed to stop auto-heartbeats
 
 // Robot MAC addresses (defined in controller_config.h)
 uint8_t robotMacs[NUM_ROBOTS][6] = {
@@ -44,7 +44,7 @@ void roleSetup() {
     // Connect to all robots as peers
     connectToAllPeers();
 
-    Serial.println("Controller setup complete, robots in E-STOP");
+    Serial.println("Controller setup complete. Periodic heartbeats DISABLED.");
 }
 
 // -------------------- Loop --------------------
@@ -55,8 +55,8 @@ void roleLoop() {
     // Check for Python timeout and handle disconnection
     checkPythonTimeout();
 
-    // Send periodic heartbeat
-    sendPeriodicHeartbeat();
+    // REMOVED: Periodic heartbeat sending
+    // sendPeriodicHeartbeat(); 
 }
 
-#endif
+#endif // ROLE_CONTROLLER

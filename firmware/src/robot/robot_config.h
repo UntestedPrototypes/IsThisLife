@@ -24,5 +24,12 @@ extern uint8_t controllerMac[6];
 // Confirmation timeout
 #define CONFIRM_TIMEOUT_MS 30000  // 30 second timeout
 
+// --- PIN DEFINITIONS ---
+#define MAIN_MOTOR_PIN 27
+#define SERVO_L_PIN 25
+#define SERVO_R_PIN 33
+#define SDA_PIN 21
+#define SCL_PIN 22
+
 #endif // ROBOT_CONFIG_H
 #endif // ROLE_ROBOT

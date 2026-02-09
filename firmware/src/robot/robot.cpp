@@ -26,6 +26,7 @@ void roleSetup() {
     delay(100);
     esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
 
+    // 1. Initialize ESP-NOW
     if (esp_now_init() != ESP_OK) {
         Serial.println("DEBUG: Error initializing ESP-NOW");
         return;
@@ -33,7 +34,7 @@ void roleSetup() {
     esp_now_register_recv_cb(onReceive);
     delay(100);
 
-    // Print own MAC address
+    // 2. Add Controller Peer
     Serial.print("Robot MAC address: ");
     Serial.println(WiFi.macAddress());
 
@@ -46,6 +47,10 @@ void roleSetup() {
     } else {
         Serial.println("DEBUG: Controller added as peer");
     }
+
+    // 3. Initialize Hardware
+    initSensors();
+    initMotors();
 
     Serial.println("DEBUG: Robot setup complete");
     delay(1000);
@@ -83,14 +88,14 @@ void roleLoop() {
         stopMotors();
     }
     
-    // ========== EXAMPLE: Request confirmation (uncomment to test) ==========
-    // This is where you'd call requestConfirmation() when you need it
-    // Example: After 10 seconds, request confirmation for gyro calibration
-    // static bool requested = false;
-    // if (!requested && millis() > 10000) {
-    //     requestConfirmation(1, "Calibrate gyro?");
-    //     requested = true;
-    // }
+    // Periodic Connection Status Log (Only if Lost)
+    static uint32_t lastStatusLog = 0;
+    if (!hb_ok && (now - lastStatusLog > 2000)) { 
+        lastStatusLog = now;
+        Serial.printf("DEBUG: Status - Connection: LOST | E-STOP: %s | Batt: %d mV\n", 
+                      estopActive ? "ACTIVE" : "INACTIVE",
+                      readBattery());
+    }
 }
 
 #endif

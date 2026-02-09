@@ -7,23 +7,36 @@ import serial_comm
 
 def send_control(robot_id, vx, vy, omega):
     """
-    Send motor control command to robot
+    Send motor control command to robot as RC pulses (1000us - 2000us)
+    Format: Little Endian (Low Byte, High Byte)
     
     Args:
         robot_id: Target robot ID
-        vx: Forward/backward velocity (-127 to 127)
-        vy: Left/right velocity (-127 to 127)
-        omega: Rotation velocity (-127 to 127)
+        vx: Forward/backward (-1.0 to 1.0)
+        vy: Left/right (-1.0 to 1.0)
+        omega: Rotation (-1.0 to 1.0)
     """
     if not serial_comm.is_connected():
         return False
     
-    # Clamp values to valid range
-    vx_byte = int(max(-127, min(127, vx))) & 0xFF
-    vy_byte = int(max(-127, min(127, vy))) & 0xFF
-    omega_byte = int(max(-127, min(127, omega))) & 0xFF
+    def map_to_us(val):
+        # Map -1.0..1.0 to 1000..2000 (Center 1500)
+        us = 1500 + (val * 500)
+        return int(max(1000, min(2000, us)))
     
-    pkt = bytes([PACKET_CONTROL, robot_id, vx_byte, vy_byte, omega_byte])
+    vx_us = map_to_us(vx)
+    vy_us = map_to_us(vy)
+    omega_us = map_to_us(omega)
+    
+    # Packet Format: [TYPE, ID, VX_L, VX_H, VY_L, VY_H, OMEGA_L, OMEGA_H]
+    # Little Endian: Low Byte first
+    pkt = bytes([
+        PACKET_CONTROL, 
+        robot_id, 
+        vx_us & 0xFF, (vx_us >> 8) & 0xFF,
+        vy_us & 0xFF, (vy_us >> 8) & 0xFF,
+        omega_us & 0xFF, (omega_us >> 8) & 0xFF
+    ])
     return serial_comm.write(pkt)
 
 
@@ -82,15 +95,7 @@ def send_start_sequence(robot_id, sequence_id):
     
     Args:
         robot_id: Target robot ID
-        sequence_id: Sequence to run (see config.py for available sequences)
-    
-    Available sequences:
-        SEQUENCE_CALIBRATION_FULL (0): Full calibration
-        SEQUENCE_CALIBRATION_GYRO (1): Gyro calibration only
-        SEQUENCE_CALIBRATION_MOTORS (2): Motor test only
-        SEQUENCE_DEMO_DANCE (3): Demo dance routine
-        SEQUENCE_SENSOR_TEST (4): Test all sensors
-        SEQUENCE_PATH_FOLLOW (5): Follow pre-programmed path
+        sequence_id: Sequence to run
     """
     if not serial_comm.is_connected():
         print("Error: Not connected to controller")
@@ -100,6 +105,6 @@ def send_start_sequence(robot_id, sequence_id):
     success = serial_comm.write(pkt)
     
     if success:
-        print(f"Sent start sequence: robot={robot_id} sequence_id={sequence_id}")
+        print(f"Sent start sequence: robot={robot_id} seq={sequence_id}")
     
     return success
