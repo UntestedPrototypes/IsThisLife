@@ -1,4 +1,4 @@
-#ifdef ROLE_ROBOT
+#ifdef ROLE_ROBOT_OLD
 
 #include <esp_now.h>
 #include <WiFi.h>
@@ -6,20 +6,24 @@
 #include "packets.h"
 
 #define ROBOT_ID 1
-#define CHANNEL 1
+#define CHANNEL 1 // Wifi channel (must match to controller channel)
+uint8_t controllerMac[6] = {0x28,0x05,0xA5,0x6F,0x3D,0xC0}; // MAC Adress of controller
+
+// Heartbeat monitoring
 #define WINDOW_SIZE 10
 #define MIN_VALID 1
 #define WINDOW_TIME_MS 500
 #define HEARTBEAT_LOSS_TIMEOUT_MS 200  // debounce period
 uint32_t lastValidHeartbeatTime = 0;
+uint32_t hbTimes[WINDOW_SIZE];
+uint8_t hbCount = 0;
 
+// Packets and Telemetry
 uint8_t controlPacketCount = 0; // Counts received CONTROL packets
 #define TELEMETRY_INTERVAL 5       // Send telemetry every 5 packets
 
 
-uint32_t hbTimes[WINDOW_SIZE];
-uint8_t hbCount = 0;
-
+// Safety
 bool estopActive = true;  // Start in E-STOP
 bool motorsEnabled = false;
 
@@ -35,7 +39,6 @@ uint8_t currentStepId = 0;
 uint32_t confirmRequestTime = 0;
 #define CONFIRM_TIMEOUT_MS 30000  // 30 second timeout
 
-uint8_t controllerMac[6] = {0x28,0x05,0xA5,0x6F,0x3D,0xC0};
 
 // -------------------- Sensors --------------------
 uint16_t readBattery() { return 7400; }

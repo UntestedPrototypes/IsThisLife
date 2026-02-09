@@ -1,422 +1,236 @@
-import sys
-import struct
-import serial
-import serial.tools.list_ports
-from PySide6 import QtWidgets, QtCore
-import pygame
+"""
+Main dashboard window
+"""
+import tkinter as tk
+from tkinter import ttk, messagebox
+import json
+import os
+import time
+from config import *
+from robot_state import RobotStateManager
+from serial_reader import SerialReader
+from ui_config_tab import ConfigTab
+from ui_live_tab import LiveViewTab
+from ui_game_tab import GameControllerTab
+import joystick_control
+import packet_sender
+import serial_comm
 
-# -------------------- Serial Config --------------------
-BAUD_RATE = 115200
-ser = None
+CONFIG_FILE = "config.json"
+AUTO_RECONNECT_INTERVAL_MS = 1000  # Try to reconnect every 1 second
 
-START_BYTE = 0xAA
-END_BYTE   = 0x55
-
-# AckTelemetryPacket (must match packets.h exactly!)
-# < = little endian
-ACK_FMT = "<BBBBBHbBH"
-ACK_SIZE = struct.calcsize(ACK_FMT)
-
-# -------------------- Pygame Controller --------------------
-pygame.init()
-pygame.joystick.init()
-joystick = None
-if pygame.joystick.get_count() > 0:
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
-    print("Joystick initialized:", joystick.get_name())
-
-PACKET_CONTROL = 0
-PACKET_ESTOP = 1
-PACKET_ESTOP_CLEAR = 2
-ROBOT_ID = 1  # Default robot to control
-
-def send_control(vx, vy, omega):
-    if not ser or not ser.is_open:
-        return
-    vx_byte = int(max(-127, min(127, vx)))
-    vy_byte = int(max(-127, min(127, vy)))
-    omega_byte = int(max(-127, min(127, omega)))
-    pkt = bytes([PACKET_CONTROL, ROBOT_ID, vx_byte & 0xFF, vy_byte & 0xFF, omega_byte & 0xFF])
-    ser.write(pkt)
-
-def send_estop():
-    if ser and ser.is_open:
-        ser.write(bytes([PACKET_ESTOP, ROBOT_ID]))
-
-def send_arm():
-    if ser and ser.is_open:
-        ser.write(bytes([PACKET_ESTOP_CLEAR, ROBOT_ID]))
-
-# -------------------- Dashboard --------------------
-class SimpleDashboard(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Robot Controller Dashboard")
-        self.resize(950, 520)
-
-        self.rx_buffer = bytearray()
-
-        main_layout = QtWidgets.QVBoxLayout(self)
-
-        # -------------------- Tabs --------------------
-        self.tabs = QtWidgets.QTabWidget()
-        main_layout.addWidget(self.tabs)
-
-        self.config_tab = QtWidgets.QWidget()
-        self.live_tab = QtWidgets.QWidget()
-        self.game_tab = QtWidgets.QWidget()  # <-- New Game Controller tab
-
-        self.tabs.addTab(self.config_tab, "Configuration")
-        self.tabs.addTab(self.live_tab, "Live View")
-        self.tabs.addTab(self.game_tab, "Game Controller")  # Add new tab
-
-        self.init_config_tab()
-        self.init_live_tab()
-        self.init_game_tab()  # Initialize new tab
-        self.refresh_ports()
-
-        # Game controller timer
-        self.game_timer = QtCore.QTimer()
-        self.game_timer.timeout.connect(self.update_game_controller)
-        self.game_timer.start(50)  # 20 Hz update
-
-    # -------------------- CONFIG TAB --------------------
-    def init_config_tab(self):
-        layout = QtWidgets.QVBoxLayout(self.config_tab)
-
-        self.com_dropdown = QtWidgets.QComboBox()
-        self.refresh_button = QtWidgets.QPushButton("Refresh COM Ports")
-        self.refresh_button.clicked.connect(self.refresh_ports)
-
-        self.connect_button = QtWidgets.QPushButton("Connect")
-        self.connect_button.clicked.connect(self.connect_controller)
-
-        self.status_label = QtWidgets.QLabel("Controller: Disconnected")
-        self.status_label.setStyleSheet("color:red; font-weight:bold;")
-
-        # ---- Terminals ----
-        self.debug_terminal = QtWidgets.QTextEdit()
-        self.debug_terminal.setReadOnly(True)
-        self.debug_terminal.setStyleSheet(
-            "background:#111; color:#9cdcfe; font-family:monospace;"
-        )
-
-        self.telemetry_terminal = QtWidgets.QTextEdit()
-        self.telemetry_terminal.setReadOnly(True)
-        self.telemetry_terminal.setStyleSheet(
-            "background:#111; color:#4ec9b0; font-family:monospace;"
-        )
-
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        splitter.addWidget(self.debug_terminal)
-        splitter.addWidget(self.telemetry_terminal)
-        splitter.setSizes([500, 500])
-
-        layout.addWidget(QtWidgets.QLabel("Serial Port"))
-        layout.addWidget(self.com_dropdown)
-        layout.addWidget(self.refresh_button)
-        layout.addWidget(self.connect_button)
-        layout.addWidget(self.status_label)
-        layout.addWidget(QtWidgets.QLabel("Debug (left)   |   Telemetry (right)"))
-        layout.addWidget(splitter)
-
-    # -------------------- LIVE TAB --------------------
-    def init_live_tab(self):
-        layout = QtWidgets.QVBoxLayout(self.live_tab)
-
-        self.robot_widgets = {}  # key = robot_id, value = QTextEdit
-
-        # For now, assume NUM_ROBOTS = 2
-        for robot_id in range(1, 2 + 1):
-            group = QtWidgets.QGroupBox(f"Robot {robot_id}")
-            group_layout = QtWidgets.QVBoxLayout()
-            te = QtWidgets.QTextEdit()
-            te.setReadOnly(True)
-            te.setStyleSheet("background:#111; color:#4ec9b0; font-family:monospace;")
-            group_layout.addWidget(te)
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-            self.robot_widgets[robot_id] = te
-
-        layout.addStretch()
-
-    # -------------------- GAME CONTROLLER TAB --------------------
-    def init_game_tab(self):
-        layout = QtWidgets.QVBoxLayout(self.game_tab)
-
-        self.game_label = QtWidgets.QLabel("Joystick control values will appear here")
-        layout.addWidget(self.game_label)
-
-        # -------------------- Bindings --------------------
-        bind_layout = QtWidgets.QFormLayout()
+class Dashboard:
+    """Main robot controller dashboard"""
+    
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Robot Controller Dashboard")
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         
-        self.vx_bind = QtWidgets.QComboBox()
-        self.vy_bind = QtWidgets.QComboBox()
-        self.omega_bind = QtWidgets.QComboBox()
-        self.estop_btn_bind = QtWidgets.QComboBox()
-        self.arm_btn_bind = QtWidgets.QComboBox()      
-
-
-        # Populate with axes
-        self.update_joystick_bind_options()
-        self.update_joystick_button_options()
-
-        bind_layout.addRow("VX Axis:", self.vx_bind)
-        bind_layout.addRow("VY Axis:", self.vy_bind)
-        bind_layout.addRow("Omega Axis:", self.omega_bind)
-        layout.addWidget(QtWidgets.QLabel("Button Bindings"))
-        bind_btn_layout = QtWidgets.QFormLayout()
-        bind_btn_layout.addRow("E-STOP Button:", self.estop_btn_bind)
-        bind_btn_layout.addRow("ARM Button:", self.arm_btn_bind)
+        # Load Global Config
+        self.app_config = self._load_config()
         
-        layout.addLayout(bind_layout)
-
-        # -------------------- Toggle Buttons --------------------
-        self.estop_toggle_btn = QtWidgets.QPushButton("E-STOP: OFF")
-        self.estop_toggle_btn.setCheckable(True)
-        self.estop_toggle_btn.clicked.connect(self.toggle_estop)
-        layout.addWidget(self.estop_toggle_btn)
-
-        self.arm_toggle_btn = QtWidgets.QPushButton("ARM: OFF")
-        self.arm_toggle_btn.setCheckable(True)
-        self.arm_toggle_btn.clicked.connect(self.toggle_arm)
-        layout.addWidget(self.arm_toggle_btn)
-
-        self.confirm_btn = QtWidgets.QPushButton("CONFIRM")
-        self.confirm_btn.clicked.connect(send_arm)  # one-shot CONFIRM
-        layout.addWidget(self.confirm_btn)
-
-        # Live values display
-        self.live_values_label = QtWidgets.QLabel("")
-        layout.addWidget(self.live_values_label)
-
-        # Initialize toggle states
-        self.estop_active = False
-        self.arm_active = False
-
-    # -------------------- Toggle Handlers --------------------
-    def toggle_estop(self):
-        self.estop_active = self.estop_toggle_btn.isChecked()
-        if self.estop_active:
-            send_estop()
-            self.estop_toggle_btn.setText("E-STOP: ON")
-            # Automatically disarm the robot if E-STOP is hit
-            if self.arm_active:
-                self.arm_active = False
-                self.arm_toggle_btn.setChecked(False)
-                self.arm_toggle_btn.setText("ARM: OFF")
-        else:
-            send_arm()  # clear E-STOP
-            self.estop_toggle_btn.setText("E-STOP: OFF")
-
-
-    def toggle_arm(self):
-        self.arm_active = self.arm_toggle_btn.isChecked()
-        if self.arm_active:
-            send_arm()
-            self.arm_toggle_btn.setText("ARM: ON")
-        else:
-            # Could optionally send a “disarm” packet if your protocol supports it
-            self.arm_toggle_btn.setText("ARM: OFF")
-
-    # -------------------- Update Joystick Bind Options --------------------
-    def update_joystick_bind_options(self):
-        if not joystick:
-            return
+        # State management
+        self.robot_state = RobotStateManager()
+        self.joy_manager = joystick_control.get_manager()
         
-        axes = [f"Axis {i}" for i in range(joystick.get_numaxes())]
-
-        # Only populate the axis dropdowns
-        for combo in [self.vx_bind, self.vy_bind, self.omega_bind]:
-            combo.clear()
-            combo.addItems(axes)
-
-    def update_joystick_button_options(self):
-        if not joystick:
-            return
-        buttons = [f"Button {i}" for i in range(joystick.get_numbuttons())]
-        for combo in [self.estop_btn_bind, self.arm_btn_bind]:
-            combo.clear()
-            combo.addItems(buttons)
-
-
-    # -------------------- Updated Game Controller Timer --------------------
-    def update_game_controller(self):
-        if not joystick or not ser or not ser.is_open:
-            return
-
-        pygame.event.pump()
-
-        # Axes control
-        vx_axis = self.vx_bind.currentIndex()
-        vy_axis = self.vy_bind.currentIndex()
-        omega_axis = self.omega_bind.currentIndex()
-
-        vx = int(joystick.get_axis(vx_axis) * 127)
-        vy = int(-joystick.get_axis(vy_axis) * 127)
-        omega = int(joystick.get_axis(omega_axis) * 127)
-
-        # Send control packet
-        send_control(vx, vy, omega)
-
-        # Handle buttons
-        estop_btn = self.estop_btn_bind.currentIndex()
-        arm_btn = self.arm_btn_bind.currentIndex()
-
-        # E-STOP toggle
-        estop_pressed = joystick.get_button(estop_btn)
-        if estop_pressed != self.estop_active:
-            self.estop_toggle_btn.setChecked(estop_pressed)
-            self.toggle_estop()
-
-        # ARM toggle (only if E-STOP is not active)
-        arm_pressed = joystick.get_button(arm_btn)
-        if not self.estop_active:
-            if arm_pressed != self.arm_active:
-                self.arm_toggle_btn.setChecked(arm_pressed)
-                self.toggle_arm()
-        else:
-            # ensure ARM is OFF while E-STOP is ON
-            if self.arm_active:
-                self.arm_active = False
-                self.arm_toggle_btn.setChecked(False)
-                self.arm_toggle_btn.setText("ARM: OFF")
-
-        # Update live values display
-        self.live_values_label.setText(
-            f"VX={vx} | VY={vy} | Ω={omega} | "
-            f"E-STOP={'ON' if self.estop_active else 'OFF'} | "
-            f"ARM={'ON' if self.arm_active else 'OFF'}"
+        # Serial reader
+        self.serial_reader = SerialReader(
+            on_telemetry=self._handle_telemetry,
+            on_confirmation=self._handle_confirmation_request,
+            on_debug=self._handle_debug
         )
-
-
-    # -------------------- Serial Helpers --------------------
-    def refresh_ports(self):
-        self.com_dropdown.clear()
-        for p in serial.tools.list_ports.comports():
-            self.com_dropdown.addItem(p.device)
-
-    def connect_controller(self):
-        global ser
-
-        if ser and ser.is_open:
-            ser.close()
-            ser = None
-            self.status_label.setText("Controller: Disconnected")
-            self.status_label.setStyleSheet("color:red; font-weight:bold;")
-            self.debug_terminal.append(">> Disconnected")
-            self.connect_button.setText("Connect")
-            return
-
-        port = self.com_dropdown.currentText()
+        
+        # Create UI
+        self._create_tabs()
+        
+        # Start background processes
+        self.serial_reader.start()
+        
+        # Start update loops
+        self.root.after(CONTROL_UPDATE_RATE_MS, self._update_game_controller)
+        self.root.after(CONTROL_UPDATE_RATE_MS, self._periodic_control_loop)
+        
+        # Start Auto-Reconnect Loop
+        self.root.after(AUTO_RECONNECT_INTERVAL_MS, self._auto_reconnect_loop)
+    
+    def _load_config(self):
+        """Load global config file"""
+        default_config = {"com_port": "", "baud_rate": BAUD_RATE, "assignments": {}}
+        if not os.path.exists(CONFIG_FILE):
+            return default_config
+        
         try:
-            ser = serial.Serial(port, BAUD_RATE, timeout=0.01)
-            self.rx_buffer.clear()
-            self.status_label.setText(f"Controller: Connected ({port})")
-            self.status_label.setStyleSheet("color:green; font-weight:bold;")
-            self.debug_terminal.append(f">> Connected on {port}")
-            self.connect_button.setText("Disconnect")
+            with open(CONFIG_FILE, 'r') as f:
+                data = json.load(f)
+                # Migration handling
+                if "assignments" not in data and "com_port" not in data:
+                    return {"com_port": "", "baud_rate": BAUD_RATE, "assignments": data}
+                return data
         except Exception as e:
-            self.debug_terminal.append(f">> Connection failed: {e}")
+            print(f"Error loading config: {e}")
+            return default_config
 
-    # -------------------- SERIAL READ --------------------
-    def read_serial(self):
-        if not (ser and ser.is_open):
-            return
-
+    def _save_global_config(self):
+        """Gather settings from all tabs and save to JSON"""
+        # Get Port & Baud
+        port = self.config_tab.get_selected_port()
+        baud = self.config_tab.get_selected_baud()
+        
+        # Get Assignments
+        assignments = self.game_tab.get_assignment_guids()
+        
+        data = {
+            "com_port": port,
+            "baud_rate": baud,
+            "assignments": assignments
+        }
+        
         try:
-            data = ser.read(ser.in_waiting)
-            if not data:
-                return
-
-            self.rx_buffer.extend(data)
-
-            while True:
-                newline_idx = self.rx_buffer.find(b"\n")
-                if newline_idx == -1:
-                    return  # wait for full line
-
-                line = self.rx_buffer[:newline_idx]
-                self.rx_buffer = self.rx_buffer[newline_idx + 1:]
-
-                try:
-                    text = line.decode("utf-8", errors="replace").strip()
-                    if not text:
-                        continue
-
-                    # DEBUG lines
-                    if text.startswith("DEBUG:"):
-                        self.debug_terminal.append(text)
-                        continue
-
-                    # TELEMETRY lines (ID=)
-                    if text.startswith("ID="):
-                        telemetry = {}
-                        for p in text.split():
-                            key, val = p.split("=")
-                            if key == "ERR":
-                                telemetry[key] = int(val, 16)
-                            else:
-                                telemetry[key] = int(val)
-
-                        robot_id = telemetry["ID"]
-
-                        if robot_id in self.robot_widgets:
-                            msg = (
-                                f"HB {telemetry['HB']:03d} | "
-                                f"Status {telemetry['STATUS']} | "
-                                f"Batt {telemetry['BATT']} mV | "
-                                f"Temp {telemetry['TEMP']} C | "
-                                f"Err 0x{telemetry['ERR']:02X} | "
-                                f"RTT {telemetry['RTT']} ms"
-                            )
-                            self.robot_widgets[robot_id].append(msg)
-
-                except Exception as e:
-                    self.debug_terminal.append(f"Serial parse error: {e}")
-
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent=4)
+            messagebox.showinfo("Success", f"Configuration saved to {CONFIG_FILE}")
+            # Update internal config so auto-reconnect knows the new port
+            self.app_config = data
         except Exception as e:
-            self.debug_terminal.append(f">> Serial error: {e}")
+            messagebox.showerror("Error", f"Failed to save config: {e}")
 
-    # -------------------- Telemetry Decode --------------------
-    def handle_telemetry(self, payload: bytes):
-        try:
-            (
-                pkt_type,
-                robot_id,
-                heartbeat,
-                acked_type,
-                status,
-                battery_mv,
-                motor_temp,
-                error_flags,
-                latency_ms
-            ) = struct.unpack(ACK_FMT, payload)
-
-            msg = (
-                f"Robot {robot_id} | "
-                f"HB {heartbeat:03d} | "
-                f"Status {status} | "
-                f"Batt {battery_mv} mV | "
-                f"Temp {motor_temp} C | "
-                f"Err 0x{error_flags:02X} | "
-                f"RTT {latency_ms} ms"
+    def _create_tabs(self):
+        """Create tab interface"""
+        self.tabs = ttk.Notebook(self.root)
+        self.tabs.pack(expand=True, fill=tk.BOTH)
+        
+        # Config tab
+        self.config_tab = ConfigTab(
+            self.tabs,
+            on_connect_callback=self._on_connected,
+            initial_port=self.app_config.get("com_port"),
+            initial_baud=self.app_config.get("baud_rate", BAUD_RATE)
+        )
+        self.tabs.add(self.config_tab.get_frame(), text="Configuration")
+        
+        # Live view tab
+        self.live_tab = LiveViewTab(self.tabs, self.robot_state)
+        self.tabs.add(self.live_tab.get_frame(), text="Live View")
+        
+        # Game controller tab
+        self.game_tab = GameControllerTab(
+            self.tabs,
+            save_callback=self._save_global_config,
+            initial_assignments=self.app_config.get("assignments")
+        )
+        self.tabs.add(self.game_tab.get_frame(), text="Game Controller")
+    
+    def _on_connected(self):
+        pass
+        
+    def _auto_reconnect_loop(self):
+        """Check connection status and reconnect if needed"""
+        target_port = self.app_config.get("com_port")
+        target_baud = self.app_config.get("baud_rate", BAUD_RATE)
+        
+        # If we have a configured port but are NOT connected
+        if target_port and not serial_comm.is_connected():
+            # Try to connect (silently, don't spam UI logs unless successful)
+            try:
+                # We access the low-level connect directly to avoid UI toggle logic
+                # However, we must update the UI state if successful
+                if serial_comm.connect(target_port, target_baud):
+                    print(f"Auto-reconnected to {target_port}")
+                    self.config_tab.set_connected_state(True)
+                    self.config_tab.log_debug(f"Auto-reconnected to {target_port}")
+            except Exception:
+                pass # Fail silently and try again later
+        
+        self.root.after(AUTO_RECONNECT_INTERVAL_MS, self._auto_reconnect_loop)
+    
+    def _handle_telemetry(self, telemetry_data):
+        self.root.after(0, lambda: self.live_tab.update_telemetry(telemetry_data))
+        is_estopped = (telemetry_data.status == STATUS_ESTOP)
+        self.robot_state.set_estop(telemetry_data.robot_id, is_estopped)
+    
+    def _handle_confirmation_request(self, conf_req):
+        self.root.after(
+            0,
+            lambda: self._show_confirmation_dialog(
+                conf_req.robot_id,
+                conf_req.step_id,
+                conf_req.message
             )
+        )
+    
+    def _handle_debug(self, message):
+        self.root.after(0, lambda: self.config_tab.log_debug(message))
+    
+    def _show_confirmation_dialog(self, robot_id, step_id, message):
+        def on_approve():
+            packet_sender.send_confirmation(robot_id, step_id, True)
+            dialog.destroy()
+        
+        def on_deny():
+            packet_sender.send_confirmation(robot_id, step_id, False)
+            dialog.destroy()
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Robot {robot_id} - Confirmation Required")
+        dialog.geometry("400x150")
+        
+        tk.Label(dialog, text=f"Robot {robot_id} requesting confirmation:").pack(pady=10)
+        tk.Label(dialog, text=message).pack(pady=5)
+        
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Approve", bg="green", command=on_approve).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Deny", bg="red", command=on_deny).pack(side=tk.LEFT, padx=5)
+    
+    def _update_game_controller(self):
+        self.game_tab.check_learning()
+        self.game_tab.update_display_values()
+        
+        all_commands = self.game_tab.get_active_commands()
+        controlled_robot_ids = []
 
-            self.telemetry_terminal.append(msg)
+        assigned_robots = self.game_tab.assignments.keys()
+        
+        for robot_id in assigned_robots:
+            if robot_id not in all_commands:
+                if not self.robot_state.is_estopped(robot_id):
+                    print(f"SAFETY: Controller disconnected for Robot {robot_id} -> E-STOPPING")
+                    packet_sender.send_estop(robot_id)
+                    self.robot_state.set_estop(robot_id, True)
+                    self.game_tab._update_assignment_list()
 
-        except Exception as e:
-            self.debug_terminal.append(f"Telemetry decode error: {e}")
+        for robot_id, controls in all_commands.items():
+            controlled_robot_ids.append(robot_id)
+            
+            if controls["estop"]:
+                if not self.robot_state.is_estopped(robot_id):
+                    packet_sender.send_estop(robot_id)
+                    self.robot_state.set_estop(robot_id, True)
+            
+            if self.robot_state.handle_arm_button(robot_id, controls["arm"]):
+                packet_sender.send_arm(robot_id)
+            
+            if self.robot_state.should_send_control(robot_id):
+                vx = int(controls["vx"] * 127)
+                vy = int(controls["vy"] * 127)
+                omega = int(controls["omega"] * 127)
+                packet_sender.send_control(robot_id, vx, vy, omega)
+            else:
+                packet_sender.send_control(robot_id, 0, 0, 0)
 
-
-# -------------------- MAIN --------------------
-app = QtWidgets.QApplication([])
-dashboard = SimpleDashboard()
-dashboard.show()
-
-timer = QtCore.QTimer()
-timer.timeout.connect(dashboard.read_serial)
-timer.start(20)  # fast enough for 50ms telemetry
-
-sys.exit(app.exec())
+        self.controlled_robot_ids = controlled_robot_ids
+        self.root.after(CONTROL_UPDATE_RATE_MS, self._update_game_controller)
+    
+    def _periodic_control_loop(self):
+        active_joystick_robots = getattr(self, 'controlled_robot_ids', [])
+        
+        for robot_id in self.robot_state.get_all_robot_ids():
+            if robot_id in active_joystick_robots:
+                continue
+            packet_sender.send_control(robot_id, 0, 0, 0)
+        
+        self.root.after(CONTROL_UPDATE_RATE_MS, self._periodic_control_loop)
+    
+    def cleanup(self):
+        self.serial_reader.stop()

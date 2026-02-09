@@ -1,5 +1,5 @@
 // CONTROLLER
-#ifdef ROLE_CONTROLLER
+#ifdef ROLE_CONTROLLER_OLD
 
 #include <esp_now.h>
 #include <WiFi.h>

@@ -19,14 +19,14 @@
 [X] Forward ACK to python
 [X] Hearbeat (Python + robots)
 [ ] Test multiple robots on one controller
-[ ] Add way to add new robots
+[x] Add way to add new robots
 [x] Custom sequences
 
 PYTHON
 [x] Critical Infra
-[ ] Mapping multiple controllers to different robots
+[x] Mapping multiple controllers to different robots
 [ ] Add buttons for: Control mode + confirmation 
-[ ] Binding for each controller
+[x] Binding for each controller
 [x] Custom sequences
 
 DOCUMENTATION
