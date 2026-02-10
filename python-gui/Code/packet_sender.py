@@ -4,17 +4,13 @@ Functions to send command packets to robots
 from config import *
 import serial_comm
 
-
 def send_control(robot_id, vx, vy, omega):
     """
     Send motor control command to robot as RC pulses (1000us - 2000us)
     Format: Little Endian (Low Byte, High Byte)
-    
     Args:
         robot_id: Target robot ID
-        vx: Forward/backward (-1.0 to 1.0)
-        vy: Left/right (-1.0 to 1.0)
-        omega: Rotation (-1.0 to 1.0)
+        vx, vy, omega: -1.0 to 1.0 floats
     """
     if not serial_comm.is_connected():
         return False
@@ -29,7 +25,6 @@ def send_control(robot_id, vx, vy, omega):
     omega_us = map_to_us(omega)
     
     # Packet Format: [TYPE, ID, VX_L, VX_H, VY_L, VY_H, OMEGA_L, OMEGA_H]
-    # Little Endian: Low Byte first
     pkt = bytes([
         PACKET_CONTROL, 
         robot_id, 
@@ -39,72 +34,22 @@ def send_control(robot_id, vx, vy, omega):
     ])
     return serial_comm.write(pkt)
 
-
 def send_estop(robot_id):
-    """
-    Send E-STOP command to robot
-    
-    Args:
-        robot_id: Target robot ID
-    """
-    if not serial_comm.is_connected():
-        return False
-    
+    if not serial_comm.is_connected(): return False
     pkt = bytes([PACKET_ESTOP, robot_id])
     return serial_comm.write(pkt)
 
-
 def send_arm(robot_id):
-    """
-    Send ARM (clear E-STOP) command to robot
-    
-    Args:
-        robot_id: Target robot ID
-    """
-    if not serial_comm.is_connected():
-        return False
-    
+    if not serial_comm.is_connected(): return False
     pkt = bytes([PACKET_ESTOP_CLEAR, robot_id])
     return serial_comm.write(pkt)
 
-
 def send_confirmation(robot_id, step_id, approved):
-    """
-    Send confirmation response to robot
-    
-    Args:
-        robot_id: Target robot ID
-        step_id: Step ID being confirmed
-        approved: True to approve, False to deny
-    """
-    if not serial_comm.is_connected():
-        return False
-    
+    if not serial_comm.is_connected(): return False
     pkt = bytes([PACKET_CONFIRM, robot_id, step_id, 1 if approved else 0])
-    success = serial_comm.write(pkt)
-    
-    if success:
-        print(f"Sent confirmation: robot={robot_id} step={step_id} approved={approved}")
-    
-    return success
-
+    return serial_comm.write(pkt)
 
 def send_start_sequence(robot_id, sequence_id):
-    """
-    Send command to start a sequence on the robot
-    
-    Args:
-        robot_id: Target robot ID
-        sequence_id: Sequence to run
-    """
-    if not serial_comm.is_connected():
-        print("Error: Not connected to controller")
-        return False
-    
+    if not serial_comm.is_connected(): return False
     pkt = bytes([PACKET_START_SEQUENCE, robot_id, sequence_id])
-    success = serial_comm.write(pkt)
-    
-    if success:
-        print(f"Sent start sequence: robot={robot_id} seq={sequence_id}")
-    
-    return success
+    return serial_comm.write(pkt)

@@ -15,8 +15,12 @@ DEFAULT_MAPPINGS = {
     "vy": ("axis", 0),
     "omega": ("axis", 2),
     "estop": ("button", 0),
-    "arm": ("button", 1)
+    "arm": ("button", 1),
+    "autopilot": ("button", 3)
 }
+
+AUTOPILOT_HOLD_TIME = 2.0  # Seconds to hold button to ENABLE
+CRUISE_ADJUST_RATE = 0.02  # Speed change per tick when pushing stick
 
 class JoystickController:
     """Represents a single connected joystick with its own mappings"""
@@ -36,11 +40,28 @@ class JoystickController:
         self.learning_mode = None
         self.learning_timeout = 0
         self.learning_baseline = []
+        
+        # Auto-Pilot State
+        self.autopilot_active = False
+        self.cruise_speed = 0.0
+        self.autopilot_btn_start = 0
+        self.autopilot_btn_prev = False
+
+    def rumble(self, low_freq, high_freq, duration_ms):
+        """
+        Trigger haptic feedback on the controller
+        Args:
+            low_freq: Intensity of low frequency motor (0.0 to 1.0)
+            high_freq: Intensity of high frequency motor (0.0 to 1.0)
+            duration_ms: Duration in milliseconds
+        """
+        try:
+            self.joy.rumble(low_freq, high_freq, int(duration_ms))
+        except Exception:
+            pass # Gracefully fail if controller doesn't support rumble
 
     def get_input_value(self, mapping):
-        """Get value for a specific mapping (axis/button)"""
         input_type, index = mapping
-        
         try:
             if input_type == "axis":
                 if index < self.joy.get_numaxes():
@@ -53,15 +74,68 @@ class JoystickController:
         return 0
 
     def get_control_values(self):
-        """Get processed control dictionary"""
+        """Get processed control dictionary with Auto-Pilot logic"""
+        
+        raw_vx = self.get_input_value(self.mappings["vx"])
+        raw_vy = -self.get_input_value(self.mappings["vy"]) # Inverted Y
+        raw_omega = self.get_input_value(self.mappings["omega"])
+        
+        # --- Auto-Pilot Button Logic ---
+        btn_val = self.get_input_value(self.mappings["autopilot"])
+        is_pressed = (btn_val > 0.5)
+        
+        if is_pressed and not self.autopilot_btn_prev:
+            # Just pressed
+            if self.autopilot_active:
+                # INSTANT DISABLE
+                self.autopilot_active = False
+                self.cruise_speed = 0.0
+                print("Auto-Pilot Disabled (Instant)")
+                self.rumble(0.6, 0.0, 300) # Low thud for OFF
+            else:
+                # Start timer for enable
+                self.autopilot_btn_start = time.time()
+        
+        if is_pressed and self.autopilot_btn_prev:
+            # Holding...
+            if not self.autopilot_active:
+                # Check for enable duration
+                duration = time.time() - self.autopilot_btn_start
+                if 0 < (duration - AUTOPILOT_HOLD_TIME) < 0.1: 
+                    self.autopilot_active = True
+                    self.cruise_speed = 0.0
+                    self.autopilot_btn_start = time.time() - (AUTOPILOT_HOLD_TIME + 1.0)
+                    print("Auto-Pilot Enabled (Hold Complete)")
+                    self.rumble(0.2, 0.6, 400) # High buzz for ON
+
+        self.autopilot_btn_prev = is_pressed
+
+        # --- Calculate Final Outputs ---
+        final_vx = raw_vx
+        final_vy = raw_vy
+        
+        if self.autopilot_active:
+            if abs(raw_vx) > 0.1:
+                self.cruise_speed -= (raw_vx * CRUISE_ADJUST_RATE)
+            self.cruise_speed = max(-1.0, min(1.0, self.cruise_speed))
+            
+            final_vx = self.cruise_speed
+            final_vy = 0.0 
+        else:
+            self.cruise_speed = 0.0
+
         return {
-            "vx": self.get_input_value(self.mappings["vx"]),
-            "vy": -self.get_input_value(self.mappings["vy"]),  # Inverted Y
-            "omega": self.get_input_value(self.mappings["omega"]),
+            "vx": final_vx,
+            "vy": final_vy,
+            "omega": raw_omega,
             "estop": self.get_input_value(self.mappings["estop"]),
-            "arm": self.get_input_value(self.mappings["arm"])
+            "arm": self.get_input_value(self.mappings["arm"]),
+            "autopilot": btn_val, 
+            "autopilot_on": self.autopilot_active,
+            "autopilot_val": self.cruise_speed
         }
 
+    # ... (Learning methods unchanged) ...
     def start_learning(self, key):
         self.learning_mode = key
         self.learning_timeout = time.time() + LEARNING_TIMEOUT_SECONDS
@@ -71,20 +145,15 @@ class JoystickController:
     def check_learning(self):
         if not self.learning_mode:
             return False, None, False
-
-        # Timeout
         if time.time() > self.learning_timeout:
             self.learning_mode = None
             return False, None, True
-
-        # Detect change
         detected = self._detect_input_change()
         if detected:
             input_type, index = detected
             self.mappings[self.learning_mode] = (input_type, index)
             self.learning_mode = None
             return True, (input_type, index), False
-
         return False, None, False
 
     def _get_all_axis_values(self):
@@ -95,12 +164,10 @@ class JoystickController:
 
     def _detect_input_change(self):
         try:
-            # Check axes
             for i in range(self.joy.get_numaxes()):
                 if len(self.learning_baseline) > i:
                     if abs(self.joy.get_axis(i) - self.learning_baseline[i]) > LEARNING_THRESHOLD:
                         return ("axis", i)
-            # Check buttons
             for i in range(self.joy.get_numbuttons()):
                 if self.joy.get_button(i):
                     return ("button", i)
@@ -109,21 +176,18 @@ class JoystickController:
         return None
         
     def get_mapping_text(self, key):
-        input_type, index = self.mappings[key]
-        return f"{'Axis' if input_type == 'axis' else 'Btn'} {index}"
-
+        if key in self.mappings:
+            input_type, index = self.mappings[key]
+            return f"{'Axis' if input_type == 'axis' else 'Btn'} {index}"
+        return "--"
 
 class ControllerManager:
-    """Manages detection and retrieval of controllers"""
-    
+    # ... (No changes to Manager needed) ...
     def __init__(self):
-        self.controllers = {} # Map instance_id -> JoystickController
-        # Initial scan
+        self.controllers = {}
         self.scan_devices()
 
     def scan_devices(self):
-        """Full scan of connected devices"""
-        # Note: We rely on hotplug events mostly, but this is good for startup
         count = pygame.joystick.get_count()
         for i in range(count):
             try:
@@ -139,8 +203,6 @@ class ControllerManager:
         return list(self.controllers.values())
 
     def update(self):
-        """Pump events and handle hotplugging"""
-        # We use event.get() to catch connection events
         for event in pygame.event.get():
             if event.type == pygame.JOYDEVICEADDED:
                 self._handle_add(event.device_index)
@@ -169,14 +231,11 @@ class ControllerManager:
         return list(self.controllers.values())
 
     def find_id_by_guid(self, target_guid):
-        """Find a controller ID that matches the given GUID"""
         for jid, ctrl in self.controllers.items():
             if ctrl.guid == target_guid:
                 return jid
         return None
 
-# Global singleton
 manager = ControllerManager()
-
 def get_manager():
     return manager
