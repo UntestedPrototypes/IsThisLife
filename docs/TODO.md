@@ -1,5 +1,14 @@
 # TODO
 
+## For wednesday
+[ ] Solder Ball-Bot 2
+[ ] Upload new code to BB1 & BB2 with more relaxed timings on the heartbeat time-out
+[ ] Fix python code
+    -> Keep vibrating of controller randomly error
+    -> GUID in config file is same for all
+    -> Add balls ID to config
+
+
 ### ROBOT
 
 [x] Implement heartbeat
@@ -26,6 +35,7 @@ PYTHON
 [x] Critical Infra
 [x] Mapping multiple controllers to different robots
 [ ] Add buttons for: Control mode + confirmation 
+[ ] Add reconnect checkbox
 [x] Binding for each controller
 [x] Custom sequences
 

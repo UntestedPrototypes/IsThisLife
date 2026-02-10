@@ -2,9 +2,7 @@
 
 Below is a description of all electronics used in the project and how they interact on a high-level.
 
-
 [Overview of electronical components] (TO BE ADDED)
-
 
 [Program flow/interaction map of Ball-Bots, Controller and Python script] (TO BE ADDED)
 
@@ -32,12 +30,30 @@ I want to highlight the heartbeat in the packets. This is the most important saf
 
 The main motor is controlled by a Electronics Speed Controller (ESC) for RC Car which talks the esp32 over a PWM signal where 1500us is neutral, 1000us is back and 2000us is forward. If this sound unfimiliar to you use GPT to walk you through the code.
 
+### Driver settings
+
+Please read the manual before changing settings. KNOW the dangers in changing these!!!
+The following settings should be programmed on the ESC (QuicRun WP10BL120 G2 Brushless ESC 120A 2-4S LiPo)
+
+
+| Item | Value |
+| :----- | ------- |
+| 1    | 3     |
+| 2    | 6     |
+| 3    | 1     |
+| 4    | 1     |
+| 5    | 3     |
+| 6    | 4     |
+| 7    | 1     |
+| 8    | 4     |
+| 9    | 1     |
+| 10   | 1     |
+
 [ADD example code]
 
 The secondary axis is managed by two servos, which will be replaced by Servo with encoder on a serial bus. This is connected to the second serial bus on the ESP32. To see how this is managed in more detail checkout the code or the wiki from the servos (https://www.waveshare.com/wiki/ST3215_Servo).
 
 [ADD Example code]
-
 
 ## SENSORS
 

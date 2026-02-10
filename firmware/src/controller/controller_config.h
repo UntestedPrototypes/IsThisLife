@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 // Controller configuration
-#define NUM_ROBOTS 1
+#define NUM_ROBOTS 3
 #define CHANNEL 1
 
 // Serial protocol markers

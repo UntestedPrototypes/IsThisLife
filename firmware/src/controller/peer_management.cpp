@@ -15,7 +15,8 @@ void connectToPeer(uint8_t robot_id) {
 
     // Check if peer already exists
     if (esp_now_is_peer_exist(mac)) {
-        Serial.printf("Robot %d already connected as peer.\n", robot_id);
+        Serial.printf("Robot %d already connected as peer (%02X:%02X:%02X:%02X:%02X:%02X).\n", 
+                      robot_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         return;
     }
 
@@ -27,17 +28,25 @@ void connectToPeer(uint8_t robot_id) {
 
     // Try to add peer
     esp_err_t res = esp_now_add_peer(&peerInfo);
+    
     if (res == ESP_OK) {
-        Serial.printf("Robot %d successfully added as peer.\n", robot_id);
-    } else if (res == ESP_ERR_ESPNOW_EXIST) {
-        Serial.printf("Robot %d already exists as peer (race condition).\n", robot_id);
-    } else if (res == ESP_ERR_ESPNOW_NOT_INIT) {
+        Serial.printf("Robot %d successfully added as peer (%02X:%02X:%02X:%02X:%02X:%02X).\n", 
+                      robot_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } 
+    else if (res == ESP_ERR_ESPNOW_EXIST) {
+        Serial.printf("Robot %d already exists as peer (race condition) (%02X:%02X:%02X:%02X:%02X:%02X).\n", 
+                      robot_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } 
+    else if (res == ESP_ERR_ESPNOW_NOT_INIT) {
         Serial.println("ESP-NOW not initialized. Call esp_now_init() first.");
-    } else if (res == ESP_ERR_ESPNOW_ARG) {
+    } 
+    else if (res == ESP_ERR_ESPNOW_ARG) {
         Serial.println("Invalid arguments when adding peer.");
-    } else if (res == ESP_ERR_ESPNOW_FULL) {
+    } 
+    else if (res == ESP_ERR_ESPNOW_FULL) {
         Serial.println("Peer list full, cannot add more peers.");
-    } else {
+    } 
+    else {
         Serial.printf("Failed to add Robot %d, error=%d\n", robot_id, res);
     }
 }

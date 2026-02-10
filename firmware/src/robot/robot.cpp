@@ -21,6 +21,9 @@ uint8_t controllerMac[6] = {0x28, 0x05, 0xA5, 0x6F, 0x3D, 0xC0};
 void roleSetup() {
     Serial.begin(115200);
     Serial.println("DEBUG: Robot setup starting...");
+    Serial.printf("DEBUG: Robot Configuration -> ID: %d | WiFi Channel: %d\n", ROBOT_ID, CHANNEL);
+
+    // Wifi and ESP-NOW Initialization
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     delay(100);

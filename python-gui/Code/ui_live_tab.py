@@ -2,7 +2,7 @@
 Live view of robot status and sequence control
 """
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from config import *
 import packet_sender
 
@@ -18,18 +18,28 @@ class LiveViewTab:
         
         self._setup_ui()
         
-        # Local update loop for instant feedback
+        # Local update loop
         self.frame.after(100, self._update_ui_loop)
     
     def get_frame(self):
         return self.frame
     
     def _setup_ui(self):
-        # Scrollable container for robot panels
+        # --- 1. Top Bar: Manual Add Robot ---
+        top_frame = ttk.Frame(self.frame)
+        top_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(top_frame, text="Add Robot ID:").pack(side=tk.LEFT, padx=5)
+        
+        self.ent_manual_id = ttk.Entry(top_frame, width=5)
+        self.ent_manual_id.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(top_frame, text="Add & Wake Up", command=self._add_manual_robot).pack(side=tk.LEFT, padx=5)
+
+        # --- 2. Scrollable Area ---
         canvas = tk.Canvas(self.frame)
         scrollbar = ttk.Scrollbar(self.frame, orient="vertical", command=canvas.yview)
         
-        # Create a frame inside the canvas for dynamic content
         self.scrollable_frame = ttk.Frame(canvas)
 
         self.scrollable_frame.bind(
@@ -43,7 +53,26 @@ class LiveViewTab:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Start with empty list. Robots are added when telemetry arrives.
+    def _add_manual_robot(self):
+        """Manually register a robot to start sending it packets"""
+        try:
+            r_id = int(self.ent_manual_id.get())
+            if r_id < 1: 
+                messagebox.showerror("Error", "ID must be positive")
+                return
+                
+            # 1. Ensure it exists in Backend State (Crucial for periodic loop)
+            self.robot_state.get_robot(r_id)
+            
+            # 2. Create UI Panel immediately
+            if r_id not in self.robot_widgets:
+                self._create_robot_panel(r_id)
+                print(f"Manually added Robot {r_id}. Packets should start streaming.")
+            
+            self.ent_manual_id.delete(0, tk.END)
+            
+        except ValueError:
+            messagebox.showerror("Error", "Invalid ID")
 
     def _create_robot_panel(self, robot_id):
         """Create a combined status and control frame for a specific robot"""
@@ -53,7 +82,7 @@ class LiveViewTab:
         # --- Top: Status Banner ---
         status_banner = tk.Label(
             lf, 
-            text="DETECTED", 
+            text="WAKING UP...", 
             font=("Arial", 12, "bold"), 
             bg="#cccccc", 
             fg="black",
@@ -110,7 +139,7 @@ class LiveViewTab:
         """Update telemetry labels. Creates panel if new robot detected."""
         robot_id = int(data.robot_id)
         
-        # DYNAMIC CREATION
+        # DYNAMIC CREATION (Auto-detect still works too)
         if robot_id not in self.robot_widgets:
             self._create_robot_panel(robot_id)
 
@@ -166,8 +195,9 @@ class LiveViewTab:
                 elif robot.armed:
                     banner.configure(text="ARMED & READY", bg="#2ecc71", fg="white")
                 else:
-                    banner.configure(text="DISARMED (Safe)", bg="#f1c40f", fg="black")
-                    
+                    # Keep "Connected" or "Disarmed" depending on if we have data
+                    pass 
+
         self.frame.after(100, self._update_ui_loop)
 
     def _start_sequence(self, robot_id, seq_id):
