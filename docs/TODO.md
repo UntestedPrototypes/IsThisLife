@@ -1,8 +1,8 @@
 # TODO
 
 ## For wednesday
-[ ] Solder Ball-Bot 2
-[ ] Upload new code to BB1 & BB2 with more relaxed timings on the heartbeat time-out
+[x] Solder Ball-Bot 2
+[x] Upload new code to BB1 & BB2 with more relaxed timings on the heartbeat time-out
 [ ] Fix python code
     -> Keep vibrating of controller randomly error
     -> GUID in config file is same for all
