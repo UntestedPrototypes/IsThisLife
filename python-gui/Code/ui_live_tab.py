@@ -61,7 +61,8 @@ class LiveViewTab:
                 messagebox.showerror("Error", "ID must be positive")
                 return
                 
-            # 1. Ensure it exists in Backend State (Crucial for periodic loop)
+            # 1. Register in Backend State (Crucial Step: This "Allows" the ID)
+            # dashboard.py will now accept packets from this ID
             self.robot_state.get_robot(r_id)
             
             # 2. Create UI Panel immediately
@@ -139,8 +140,9 @@ class LiveViewTab:
         """Update telemetry labels. Creates panel if new robot detected."""
         robot_id = int(data.robot_id)
         
-        # DYNAMIC CREATION (Auto-detect still works too)
+        # DYNAMIC CREATION (Only if already allowed by backend/manual add)
         if robot_id not in self.robot_widgets:
+            # If dashboard passed it here, it means it's valid. Create UI.
             self._create_robot_panel(robot_id)
 
         widgets = self.robot_widgets[robot_id]
@@ -188,15 +190,16 @@ class LiveViewTab:
             robot = self.robot_state.get_robot(r_id)
             banner = widgets["status_banner"]
             
-            # Update banner color immediately on state change
+            # Update banner color immediately on state change (instant feedback)
             if not robot.estop_active:
                 if robot.autopilot_active:
                     banner.configure(text=f"AUTO-PILOT ({int(robot.autopilot_speed * 100)}%)", bg="#007bff", fg="white")
                 elif robot.armed:
                     banner.configure(text="ARMED & READY", bg="#2ecc71", fg="white")
                 else:
-                    # Keep "Connected" or "Disarmed" depending on if we have data
-                    pass 
+                    # Keep existing text (likely "CONNECTED" or "DISARMED"), change color to yellow/grey
+                    # We avoid overwriting "RUNNING SEQUENCE" here blindly
+                    pass
 
         self.frame.after(100, self._update_ui_loop)
 

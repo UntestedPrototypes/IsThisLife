@@ -56,11 +56,13 @@ class RobotStateManager:
     """Manage state for multiple robots"""
     def __init__(self):
         self.robots = {}
-        # We no longer pre-populate MAX_ROBOTS.
-        # Robots are added as they are discovered.
     
+    def exists(self, robot_id):
+        """Check if robot exists without creating it"""
+        return robot_id in self.robots
+
     def get_robot(self, robot_id):
-        """Get robot state by ID, creating if missing"""
+        """Get robot state by ID, creating if missing (used by manual add)"""
         if robot_id not in self.robots:
             self.robots[robot_id] = RobotState(robot_id)
         return self.robots[robot_id]
@@ -70,20 +72,21 @@ class RobotStateManager:
 
     # Forwarding methods
     def set_estop(self, robot_id, active):
-        self.get_robot(robot_id).set_estop(active)
+        if self.exists(robot_id): self.get_robot(robot_id).set_estop(active)
     def set_autopilot(self, robot_id, active, speed):
-        self.get_robot(robot_id).set_autopilot(active, speed)
+        if self.exists(robot_id): self.get_robot(robot_id).set_autopilot(active, speed)
     def toggle_arm(self, robot_id):
-        return self.get_robot(robot_id).toggle_arm()
+        return self.get_robot(robot_id).toggle_arm() if self.exists(robot_id) else False
     def set_arm(self, robot_id, armed):
-        self.get_robot(robot_id).set_arm(armed)
+        if self.exists(robot_id): self.get_robot(robot_id).set_arm(armed)
     def is_armed(self, robot_id):
-        return self.get_robot(robot_id).armed
+        return self.get_robot(robot_id).armed if self.exists(robot_id) else False
     def is_estopped(self, robot_id):
-        return self.get_robot(robot_id).estop_active
+        return self.get_robot(robot_id).estop_active if self.exists(robot_id) else False
     def should_send_control(self, robot_id):
-        return self.get_robot(robot_id).should_send_control()
+        return self.get_robot(robot_id).should_send_control() if self.exists(robot_id) else False
     def handle_arm_button(self, robot_id, button_pressed):
+        if not self.exists(robot_id): return False
         robot = self.get_robot(robot_id)
         if button_pressed and not robot._prev_arm_input:
             robot._prev_arm_input = button_pressed

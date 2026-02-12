@@ -1,0 +1,24 @@
+{
+    "com_port": "COM3",
+    "baud_rate": 115200,
+    "assignments": {
+        "3": {
+            "guid": "0300938d5e040000ff02000000007200",
+            "instance_index": 0,
+            "scales": {
+                "vx": 50,
+                "vy": 20,
+                "omega": 0
+            }
+        },
+        "2": {
+            "guid": "030082795e040000ea02000000007200",
+            "instance_index": 0,
+            "scales": {
+                "vx": 50,
+                "vy": 20,
+                "omega": 0
+            }
+        }
+    }
+}
