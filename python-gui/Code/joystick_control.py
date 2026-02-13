@@ -3,22 +3,29 @@ Game controller / joystick input handling with multi-controller support
 """
 import pygame
 import time
+import os
+import platform
 from config import *
+
+# --- MAC OS FIX ---
+# Prevent Pygame from opening a window/dock icon which conflicts with Tkinter
+if platform.system() == "Darwin":
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 # Initialize pygame once globally
 pygame.init()
 pygame.joystick.init()
 
 DEFAULT_MAPPINGS = {
-    "vx": ("axis", 1),       # Left Stick Up/Down
-    "vy": ("axis", 2),       # Right Stick Left/Right
+    "vx": ("axis", 1),       # Left Stick Up/Down (Forward/Back)
+    "vy": ("axis", 2),       # Right Stick Left/Right (Strafe)
     "omega": ("none", 0),    # Unbound (Rotation disabled)
     "estop": ("button", 0),  # A Button / Cross
     "arm": ("button", 1),    # B Button / Circle
     "autopilot": ("button", 3) # Y Button / Triangle
 }
 
-AUTOPILOT_HOLD_TIME = 1.0
+AUTOPILOT_HOLD_TIME = 2.0
 CRUISE_ADJUST_RATE = 0.02
 
 class JoystickController:
@@ -62,7 +69,7 @@ class JoystickController:
     def get_control_values(self):
         # Raw Inputs
         raw_vx = self.get_input_value(self.mappings["vx"])
-        raw_vy = -self.get_input_value(self.mappings["vy"])
+        raw_vy = -self.get_input_value(self.mappings["vy"]) 
         raw_omega = self.get_input_value(self.mappings["omega"])
         
         # Autopilot Logic
@@ -91,10 +98,15 @@ class JoystickController:
         final_vy = raw_vy
         
         if self.autopilot_active:
-            if abs(raw_vx) > 0.1: self.cruise_speed -= (raw_vx * CRUISE_ADJUST_RATE)
+            # Cruise Control Handling (Stick adjusts speed)
+            if abs(raw_vx) > 0.1:
+                self.cruise_speed -= (raw_vx * CRUISE_ADJUST_RATE)
+            
             self.cruise_speed = max(-1.0, min(1.0, self.cruise_speed))
+            
             final_vx = self.cruise_speed
-            #final_vy = 0.0
+            # Left/Right (Strafe) remains ACTIVE during Autopilot
+            final_vy = raw_vy 
             
         return {
             "vx": final_vx, "vy": final_vy, "omega": raw_omega,
@@ -105,7 +117,7 @@ class JoystickController:
             "autopilot_val": self.cruise_speed
         }
 
-    # Learning methods omitted for brevity (same as previous)
+    # Learning methods
     def start_learning(self, key):
         self.learning_mode = key; self.learning_timeout = time.time() + LEARNING_TIMEOUT_SECONDS; self.learning_baseline = self._get_all_axis_values()
         return True
@@ -126,7 +138,11 @@ class JoystickController:
                 if self.joy.get_button(i): return ("button",i)
         except: pass
         return None
-    def get_mapping_text(self, k): return f"{'Axis' if self.mappings.get(k,[0])[0]=='axis' else 'Btn'} {self.mappings.get(k,[0,0])[1]}" if k in self.mappings else "--"
+    def get_mapping_text(self, k): 
+        if k not in self.mappings: return "--"
+        m = self.mappings[k]
+        if m[0] == "none": return "Unbound"
+        return f"{'Axis' if m[0]=='axis' else 'Btn'} {m[1]}"
 
 
 class ControllerManager:
@@ -167,28 +183,16 @@ class ControllerManager:
     def get_controller(self, jid): return self.controllers.get(jid)
     def get_all(self): return list(self.controllers.values())
 
-    # --- THE BETTER WAY ---
     def find_id_by_guid(self, target_guid, instance_index=0, exclude_ids=None):
-        """
-        Find a controller with target_guid.
-        If there are multiple, return the one at 'instance_index'.
-        """
         if exclude_ids is None: exclude_ids = []
-        
-        # 1. Find ALL matches
         matches = []
-        # Sort by ID to ensure stability (Controller 0 is always first, etc.)
         sorted_ids = sorted(self.controllers.keys())
-        
         for jid in sorted_ids:
             ctrl = self.controllers[jid]
             if ctrl.guid == target_guid and jid not in exclude_ids:
                 matches.append(jid)
-        
-        # 2. Pick the Nth match
         if instance_index < len(matches):
             return matches[instance_index]
-            
         return None
 
 manager = ControllerManager()
