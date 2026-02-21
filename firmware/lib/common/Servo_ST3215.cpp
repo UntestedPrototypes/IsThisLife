@@ -6,7 +6,7 @@ Servo_ST3215::Servo_ST3215(int servoID1, int servoID2)
       torqueThreshold(400), rawTruePos1(0), rawTruePos2(0),
       lastRaw1(0), lastRaw2(0), zeroOffset1(0), zeroOffset2(0), 
       currentVelCommand(0), minLimit(-999999), maxLimit(999999), 
-      reverse2(true), safeMode(false) {}
+      reverse2(true) {}
 
 bool Servo_ST3215::begin(HardwareSerial& serialPort, int rx, int tx) {
     serialPort.begin(1000000, SERIAL_8N1, rx, tx); 
@@ -61,70 +61,81 @@ void Servo_ST3215::trackWraps(int servoNum, int newRaw) {
     }
 }
 
+bool Servo_ST3215::safetyCheck() {
+    for (int id : {id1, id2}) {
+        // FeedBack returns -1 if the servo does not respond (disconnected)
+        if (st.FeedBack(id) == -1) {
+            Serial.printf("CRITICAL ERROR: Motor with ID %d not detected!\n", id);
+            disableMotors();
+            return false;
+        }
+
+        int load = st.ReadLoad(-1);
+        if (abs(load) > torqueThreshold) {
+            Serial.printf("SAFETY: Load threshold exceeded on ID%d: %d\n", id, load);
+            disableMotors();
+            return false;
+        }
+    }
+
+    return true; // Only returns true if both motors respond and loads are safe
+}
+
 void Servo_ST3215::update() {
-    if (safeMode) return;
+    // 1. Update position tracking
+    if (st.FeedBack(id1) != -1) trackWraps(1, st.ReadPos(-1));
+    if (st.FeedBack(id2) != -1) trackWraps(2, st.ReadPos(-1));
+    // 1. Debug Output (Requested raw and continuous positions)
+    // rawTruePos1 and rawTruePos2 are now accessed as global variables
+    Serial.printf("DEBUG | ID1 Raw: %d, Cont: %ld | ID2 Raw: %d, Cont: %ld\n", 
+                  lastRaw1, rawTruePos1, lastRaw2, rawTruePos2);
 
-    // Buffer-read ID 1
-    if (st.FeedBack(id1) != -1) {
-        int raw1 = st.ReadPos(-1);
-        int load1 = st.ReadLoad(-1);
-        
-        if (abs(load1) > torqueThreshold) {
-            Serial.printf("SAFETY: Load threshold exceeded on ID1: %d\n", load1);
-            emergencyStop();
-            return;
-        }
-        trackWraps(1, raw1);
-    }
-
-    // Buffer-read ID 2
-    if (st.FeedBack(id2) != -1) {
-        int raw2 = st.ReadPos(-1);
-        int load2 = st.ReadLoad(-1);
-        
-        if (abs(load2) > torqueThreshold) {
-            Serial.printf("SAFETY: Load threshold exceeded on ID2: %d\n", load2);
-            emergencyStop();
-            return;
-        }
-        trackWraps(2, raw2);
-    }
-    Serial.printf("DEBUG | Servo 1 - Mode: %d, Raw: %d, Cont: %ld | Servo 2 - Mode: %d, Raw: %d, Cont: %ld\n", 
-                  st.ReadMode(id1), lastRaw1, rawTruePos1, st.ReadMode(id2), lastRaw2, rawTruePos2);
-
-    // Dynamic Limits Enforcement
+    // 2. Movement Logic (Limits, Deceleration, and Sync Correction)
     if (currentVelCommand != 0) {
-        long currentPos = getPosition(id1);
+        long Pos1 = getPosition(id1);
+        long pos2 = getPosition(id2);
         float speedFactor = 1.0;
 
-        // Approaching Max Limit
-        if (currentVelCommand > 0 && currentPos > (maxLimit - slowdownThreshold)) {
-            speedFactor = (float)(maxLimit - currentPos) / slowdownThreshold;
-        } 
-        // Approaching Min Limit
-        else if (currentVelCommand < 0 && currentPos < (minLimit + slowdownThreshold)) {
-            speedFactor = (float)(currentPos - minLimit) / slowdownThreshold;
+        // --- A. Deceleration logic for overshooting ---
+        // Calculate factor if approaching Max Limit
+        if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
+            speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
+        }
+        // Calculate factor if approaching Min Limit
+        else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
+            speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
         }
 
+        // Hard stop if limit is reached or exceeded
         if (speedFactor <= 0) {
-            speedFactor = 0;
-            currentVelCommand = 0; // Target reached
+            st.WriteSpe(id1, 0, (u8)accel);
+            st.WriteSpe(id2, 0, (u8)accel);
+            currentVelCommand = 0;
+            Serial.println("Target limit reached. Motors halted.");
+            return;
         }
 
-        int dynamicSpeed = (int)(currentVelCommand * speedFactor);
+        // --- B. Sync Correction Logic ---
+        // Calculate drift (How far apart are the two motors?)
+        // If drift is positive, ID1 is "ahead" of ID2
+        long drift = Pos1 - pos2;
+        int syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
+
+        // --- C. Calculate Final Speeds ---
+        int baseSpeed = (int)(currentVelCommand * speedFactor);
         
-        int s1 = dynamicSpeed;
-        int s2 = reverse2 ? -dynamicSpeed : dynamicSpeed;
-        
-        // Update the speed based on current distance
+        // Apply sync correction: slow down the leading motor, speed up the lagging one
+        int s1 = baseSpeed - syncCorrection;
+        int s2_val = baseSpeed + syncCorrection;
+        int s2 = reverse2 ? -s2_val : s2_val;
+
+        // --- D. Send Commands ---
         st.WriteSpe(id1, (s16)s1, (u8)accel);
         st.WriteSpe(id2, (s16)s2, (u8)accel);
     }
 }
 
 void Servo_ST3215::setVelocity(int targetVelocity) {
-    if (safeMode) return;
-
     long currentPos = getPosition(id1);
     float speedFactor = 1.0;
 
@@ -164,9 +175,17 @@ void Servo_ST3215::disableMotors() {
     currentVelCommand = 0; // Clear velocity so it doesn't try to move when re-enabled
 }
 
-void Servo_ST3215::enableMotors() {
-    st.EnableTorque(id1, 1); 
-    st.EnableTorque(id2, 1); 
+bool Servo_ST3215::enableMotors() {
+    for (int id : {id1, id2}) {
+        if (st.FeedBack(id) == -1) {
+            Serial.printf("ERROR: Cannot enable motor ID%d because it is not responding!\n", id);
+            return false;
+        }
+        st.setMode(id, SMS_STS_MODE_WHEEL);
+        st.EnableTorque(id, 1);
+    }
+
+    return true;
 }
 
 void Servo_ST3215::setOuterLimits(long minLim, long maxLim) {
@@ -220,26 +239,7 @@ void Servo_ST3215::resetPositionToZero() {
     Serial.println("Position Reset: Current location is now absolute 0.");
 }
 
-
-void Servo_ST3215::emergencyStop() {
-    safeMode = true;
-    st.EnableTorque(id1, 0); 
-    st.EnableTorque(id2, 0); 
-    currentVelCommand = 0;
-}
-
-void Servo_ST3215::resetSafety() {
-    safeMode = false;
-    st.EnableTorque(id1, 1); 
-    st.EnableTorque(id2, 1); 
-}
-
-void Servo_ST3215::setMaxTorque(int limit) {
-    st.writeWord(id1, SMS_STS_TORQUE_LIMIT_L, (u16)limit); 
-    st.writeWord(id2, SMS_STS_TORQUE_LIMIT_L, (u16)limit); 
-}
-
-void Servo_ST3215::setSafetyThreshold(int threshold) { torqueThreshold = threshold; }
+void Servo_ST3215::setLoadThreshold(int threshold) { torqueThreshold = threshold; }
 void Servo_ST3215::setAcceleration(int a) { accel = a; }
 void Servo_ST3215::setReverseSecond(bool rev) { reverse2 = rev; }
 #endif // ROLE_TESTING

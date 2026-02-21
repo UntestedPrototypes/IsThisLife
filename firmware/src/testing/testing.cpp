@@ -42,11 +42,7 @@ void handleSerialCommands() {
         }
         else if (cmd == 'X' || cmd == 'x') { 
             Serial.println("Command: EMERGENCY STOP");
-            servo.emergencyStop();
-        }
-        else if (cmd == 'R' || cmd == 'r') {
-            Serial.println("Command: Resetting Safety");
-            servo.resetSafety();
+            servo.disableMotors();
         }
         else if (cmd == 'Z' || cmd == 'z') {
             Serial.println("Command: Setting Zero Point");
@@ -74,7 +70,7 @@ void roleSetup() {
     }
 
     servo.setReverseSecond(false);
-    servo.setSafetyThreshold(600); // Stop if load > 60%
+    servo.setLoadThreshold(600); // Stop if load > 60%
     
     // Set symmetric outer limits (e.g., +/- 2 rotations from start)
     long limitRange = 8192 * 2; 
@@ -95,7 +91,7 @@ void roleLoop() {
 
     // 3. Print status periodically
     static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate > 200 && servo.isSystemSafe()) {
+    if (millis() - lastUpdate > 200 && servo.safetyCheck()) {
         // Fetch and print the current continuous encoder position
         long currentPos_1 = servo.getPosition(1);
         long currentPos_2 = servo.getPosition(2);

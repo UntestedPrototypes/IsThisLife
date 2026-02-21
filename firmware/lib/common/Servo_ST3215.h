@@ -23,7 +23,6 @@ private:
     long minLimit;
     long maxLimit;
     bool reverse2;
-    bool safeMode;
 
     void trackWraps(int servoNum, int newRaw);
 public:
@@ -32,15 +31,13 @@ public:
     
     // Safety & Monitoring
     void update(); // MUST be called frequently in loop()
-    bool isSystemSafe() { return !safeMode; }
-    void resetSafety();
-    void setSafetyThreshold(int threshold);
+    void setLoadThreshold(int threshold);
+    bool safetyCheck();
     void setMaxTorque(int limit);
-    void emergencyStop();
 
     // Manual Calibration
     void disableMotors();   // Disables torque so you can move it by hand
-    void enableMotors();    // Re-enables torque
+    bool enableMotors();    // Re-enables torque
     void setMinLimitToCurrentPosition(); // Saves the current position as the Min Limit
     void setMaxLimitToCurrentPosition(); // Saves the current position as the Max Limit
 
