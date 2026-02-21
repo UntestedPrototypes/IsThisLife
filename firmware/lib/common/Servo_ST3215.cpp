@@ -95,15 +95,30 @@ void Servo_ST3215::update() {
     // Dynamic Limits Enforcement
     if (currentVelCommand != 0) {
         long currentPos = getPosition(id1);
-        if ((currentPos >= maxLimit && currentVelCommand > 0) || 
-            (currentPos <= minLimit && currentVelCommand < 0)) {
-            
-            // Stop immediately
-            st.WriteSpe(id1, (s16)0, (u8)accel);
-            st.WriteSpe(id2, (s16)0, (u8)accel);
-            currentVelCommand = 0; // Clear command so it doesn't resume
-            Serial.println("End limit reached! Motors halted.");
+        float speedFactor = 1.0;
+
+        // Approaching Max Limit
+        if (currentVelCommand > 0 && currentPos > (maxLimit - slowdownThreshold)) {
+            speedFactor = (float)(maxLimit - currentPos) / slowdownThreshold;
+        } 
+        // Approaching Min Limit
+        else if (currentVelCommand < 0 && currentPos < (minLimit + slowdownThreshold)) {
+            speedFactor = (float)(currentPos - minLimit) / slowdownThreshold;
         }
+
+        if (speedFactor <= 0) {
+            speedFactor = 0;
+            currentVelCommand = 0; // Target reached
+        }
+
+        int dynamicSpeed = (int)(currentVelCommand * speedFactor);
+        
+        int s1 = dynamicSpeed;
+        int s2 = reverse2 ? -dynamicSpeed : dynamicSpeed;
+        
+        // Update the speed based on current distance
+        st.WriteSpe(id1, (s16)s1, (u8)accel);
+        st.WriteSpe(id2, (s16)s2, (u8)accel);
     }
 }
 
@@ -111,15 +126,30 @@ void Servo_ST3215::setVelocity(int targetVelocity) {
     if (safeMode) return;
 
     long currentPos = getPosition(id1);
+    float speedFactor = 1.0;
 
-    // Initial boundary block: Prevent moving further if already outside limits
-    if (currentPos >= maxLimit && targetVelocity > 0) targetVelocity = 0;
-    if (currentPos <= minLimit && targetVelocity < 0) targetVelocity = 0;
+    // Deceleration logic for Max Limit
+    if (targetVelocity > 0 && currentPos > (maxLimit - slowdownThreshold)) {
+        long distanceToLimit = maxLimit - currentPos;
+        speedFactor = (float)distanceToLimit / slowdownThreshold;
+    }
+    // Deceleration logic for Min Limit
+    else if (targetVelocity < 0 && currentPos < (minLimit + slowdownThreshold)) {
+        long distanceToLimit = currentPos - minLimit;
+        speedFactor = (float)distanceToLimit / slowdownThreshold;
+    }
+
+    // Clamp factor between 0.0 and 1.0
+    if (speedFactor < 0) speedFactor = 0;
+    if (speedFactor > 1.0) speedFactor = 1.0;
 
     currentVelCommand = targetVelocity;
+    
+    // Apply the scaling factor to the final speed sent to servos
+    int finalSpeed = (int)(targetVelocity * speedFactor);
 
-    int s1 = targetVelocity;
-    int s2 = reverse2 ? -targetVelocity : targetVelocity;
+    int s1 = finalSpeed;
+    int s2 = reverse2 ? -finalSpeed : finalSpeed;
     st.WriteSpe(id1, (s16)s1, (u8)accel);
     st.WriteSpe(id2, (s16)s2, (u8)accel);
 }
@@ -139,11 +169,16 @@ void Servo_ST3215::enableMotors() {
     st.EnableTorque(id2, 1); 
 }
 
-void Servo_ST3215::setMinLimitHere() {
+void Servo_ST3215::setOuterLimits(long minLim, long maxLim) {
+    minLimit = minLim;
+    maxLimit = maxLim;
+}
+
+void Servo_ST3215::setMinLimitToCurrentPosition() {
     minLimit = getPosition(id1);
 }
 
-void Servo_ST3215::setMaxLimitHere() {
+void Servo_ST3215::setMaxLimitToCurrentPosition() {
     maxLimit = getPosition(id1);
     
     // Safety check in case they were set backwards
@@ -164,15 +199,27 @@ long Servo_ST3215::getPosition(int id) {
     return 0;
 }
 
-void Servo_ST3215::setZeroPoint() {
-    zeroOffset1 = rawTruePos1; 
-    zeroOffset2 = rawTruePos2; 
+void Servo_ST3215::resetPositionToZero() {
+    // 1. Read the current physical 0-4095 angle to prevent a 'jump' in the next update()
+    int currentRaw1 = st.ReadPos(id1);
+    int currentRaw2 = st.ReadPos(id2);
+    
+    // 2. Update lastRaw so the next trackWraps() starts from this physical point
+    if (currentRaw1 >= 0) lastRaw1 = currentRaw1;
+    if (currentRaw2 >= 0) lastRaw2 = currentRaw2;
+
+    // 3. Reset the global/member continuous counters to exactly 0
+    // This makes the current physical spot the absolute zero point
+    rawTruePos1 = 0;
+    rawTruePos2 = 0;
+
+    // 4. Reset user offsets to 0 so getPosition() returns the rawTruePos directly
+    zeroOffset1 = 0;
+    zeroOffset2 = 0;
+    
+    Serial.println("Position Reset: Current location is now absolute 0.");
 }
 
-void Servo_ST3215::setOuterLimits(long minLim, long maxLim) {
-    minLimit = minLim;
-    maxLimit = maxLim;
-}
 
 void Servo_ST3215::emergencyStop() {
     safeMode = true;

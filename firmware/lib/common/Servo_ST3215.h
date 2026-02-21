@@ -11,7 +11,8 @@ private:
     int id1, id2;
     int accel;
     int torqueThreshold;
-    
+    int slowdownThreshold = 500; // Distance from limit at which to start slowing down
+
     // Position Tracking Variables
     long rawTruePos1, rawTruePos2;       // The software-tracked absolute positions
     int lastRaw1, lastRaw2;              // Previous raw values for wrap detection
@@ -40,14 +41,15 @@ public:
     // Manual Calibration
     void disableMotors();   // Disables torque so you can move it by hand
     void enableMotors();    // Re-enables torque
-    void setMinLimitHere(); // Saves the current position as the Min Limit
-    void setMaxLimitHere(); // Saves the current position as the Max Limit
+    void setMinLimitToCurrentPosition(); // Saves the current position as the Min Limit
+    void setMaxLimitToCurrentPosition(); // Saves the current position as the Max Limit
 
     // Configuration
     void setAcceleration(int a);
     void setReverseSecond(bool rev);
-    void setZeroPoint(); 
-    void setOuterLimits(long minLim, long maxLim); 
+    void resetPositionToZero();
+    void setOuterLimits(long minLim, long maxLim);
+    int GetMode(int id);
     
     // Movement Commands
     void setVelocity(int targetVelocity);

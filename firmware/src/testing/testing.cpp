@@ -33,11 +33,11 @@ void handleSerialCommands() {
             servo.enableMotors();
         }
         else if (cmd == '[') {
-            servo.setMinLimitHere();
+            servo.setMinLimitToCurrentPosition();
             Serial.printf("New MIN Limit set at: %ld\n", servo.getPosition(1));
         }
         else if (cmd == ']') {
-            servo.setMaxLimitHere();
+            servo.setMaxLimitToCurrentPosition();
             Serial.printf("New MAX Limit set at: %ld\n", servo.getPosition(1));
         }
         else if (cmd == 'X' || cmd == 'x') { 
@@ -47,6 +47,18 @@ void handleSerialCommands() {
         else if (cmd == 'R' || cmd == 'r') {
             Serial.println("Command: Resetting Safety");
             servo.resetSafety();
+        }
+        else if (cmd == 'Z' || cmd == 'z') {
+            Serial.println("Command: Setting Zero Point");
+            servo.resetPositionToZero();
+        }
+        else if (cmd == 'L' || cmd == 'l') {
+            long lim = Serial.parseInt();
+            servo.setOuterLimits(-lim, lim);
+            Serial.printf("New Outer Limits set: Min = %ld, Max = %ld\n", -lim, lim);
+        }
+        else {
+            Serial.printf("Unknown command: %c\n", cmd);
         }
     }
 }
@@ -68,7 +80,7 @@ void roleSetup() {
     long limitRange = 8192 * 2; 
     servo.setOuterLimits(-limitRange, limitRange);    
     
-    servo.setZeroPoint();          // Set current position as zero
+    servo.resetPositionToZero();          // Set current position as zero
     
     Serial.println("System Ready. Use V[val], S (Stop), E (E-Stop), or R (Reset).");
 }
