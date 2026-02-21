@@ -87,7 +87,7 @@ void roleLoop() {
         // Fetch and print the current continuous encoder position
         long currentPos_1 = servo.getPosition(1);
         long currentPos_2 = servo.getPosition(2);
-        Serial.printf("Continuous Position: %ld, %ld\n", currentPos_1, currentPos_2);
+        //Serial.printf("Continuous Position: %ld, %ld\n", currentPos_1, currentPos_2);
         
         lastUpdate = millis();
     }

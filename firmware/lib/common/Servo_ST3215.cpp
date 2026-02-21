@@ -89,6 +89,8 @@ void Servo_ST3215::update() {
         }
         trackWraps(2, raw2);
     }
+    Serial.printf("DEBUG | Servo 1 - Mode: %d, Raw: %d, Cont: %ld | Servo 2 - Mode: %d, Raw: %d, Cont: %ld\n", 
+                  st.ReadMode(id1), lastRaw1, rawTruePos1, st.ReadMode(id2), lastRaw2, rawTruePos2);
 
     // Dynamic Limits Enforcement
     if (currentVelCommand != 0) {

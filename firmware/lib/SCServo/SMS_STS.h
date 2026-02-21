@@ -70,6 +70,7 @@ public:
 	virtual int WriteMinAngleLimit(u8 ID, s16 MinAngle);//写新的最小角度值
 	virtual int WriteMaxAngleLimit(u8 ID, s16 MaxAngle);//写新的最大角度值
 	virtual int WriteMinMaxAngleLimit(u8 ID, s16 MinAngle, s16 MaxAngle);
+	virtual int writePhase(u8 ID, u8 Phase);
 	virtual int EnableMultiTurn(u8 ID, u8 Enable);
 	virtual int WritePosEx(u8 ID, s16 Position, u16 Speed, u8 ACC = 0);//普通写单个舵机位置指令
 	virtual int RegWritePosEx(u8 ID, s16 Position, u16 Speed, u8 ACC = 0);//异步写单个舵机位置指令(RegWriteAction生效)

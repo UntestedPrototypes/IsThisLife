@@ -62,6 +62,14 @@ int SMS_STS::WriteMinMaxAngleLimit(u8 ID, s16 MinAngle, s16 MaxAngle)
 	return result;
 }
 
+int SMS_STS::writePhase(u8 ID, u8 Phase)
+{
+	unLockEprom(ID);
+	int result = writeByte(ID, SMS_STS_PHASE, Phase);
+	LockEprom(ID);
+	return result;
+}
+
 int SMS_STS::EnableMultiTurn(u8 ID, u8 Enable)
 {
 	// 1. Read the current phase register
