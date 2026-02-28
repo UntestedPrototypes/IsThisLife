@@ -1,4 +1,4 @@
-#ifdef ROLE_TESTING
+#if defined(ROLE_TESTING) || defined(ROLE_ROBOT)
 #include "Servo_ST3215.h"
 
 Servo_ST3215::Servo_ST3215(int servoID1, int servoID2) 
@@ -87,8 +87,7 @@ void Servo_ST3215::update() {
     if (st.FeedBack(id2) != -1) trackWraps(2, st.ReadPos(-1));
     // 1. Debug Output (Requested raw and continuous positions)
     // rawTruePos1 and rawTruePos2 are now accessed as global variables
-    Serial.printf("DEBUG | ID1 Raw: %d, Cont: %ld | ID2 Raw: %d, Cont: %ld\n", 
-                  lastRaw1, rawTruePos1, lastRaw2, rawTruePos2);
+    //Serial.printf("DEBUG | ID1 Raw: %d, Cont: %ld | ID2 Raw: %d, Cont: %ld\n", lastRaw1, rawTruePos1, lastRaw2, rawTruePos2);
 
     // 2. Movement Logic (Limits, Deceleration, and Sync Correction)
     if (currentVelCommand != 0) {

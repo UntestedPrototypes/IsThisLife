@@ -178,7 +178,7 @@ void runSequenceStep() {
                 case 0:
                     Serial.println("SEQ: Sensor test started");
                     Serial.printf("Battery: %d mV\n", readBattery());
-                    Serial.printf("Temp: %d C\n", readMotorTemp());
+                    Serial.printf("Temp: %d C\n", readTemp());
                     sequenceStepStartTime = millis();
                     currentSequenceStep++;
                     break;

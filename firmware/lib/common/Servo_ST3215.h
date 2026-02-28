@@ -1,4 +1,4 @@
-#ifdef ROLE_TESTING
+#if defined(ROLE_TESTING) || defined(ROLE_ROBOT)
 #ifndef SERVO_ST3215_H
 #define SERVO_ST3215_H
 

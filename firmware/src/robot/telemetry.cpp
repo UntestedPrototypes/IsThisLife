@@ -31,7 +31,7 @@ void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     }
     
     ack.battery_mv = readBattery();
-    ack.motor_temp = readMotorTemp();
+    ack.motor_temp = readTemp();
     ack.error_flags = getErrorFlags();
     ack.latency_ms = 808; // Placeholder, can be calculated if needed
 

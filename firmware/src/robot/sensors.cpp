@@ -27,8 +27,8 @@ bool initSensors() {
     bool imuL_ok = imuL.begin();
     bool imuR_ok = imuR.begin();
 
-    if (!imuL_ok) Serial.println("ERROR: Failed to find IMU Left (0x28)");
-    if (!imuR_ok) Serial.println("ERROR: Failed to find IMU Right (0x29)");
+    if (!imuL_ok) Serial.println("ERROR: Failed to find IMU Top(0x28)");
+    if (!imuR_ok) Serial.println("ERROR: Failed to find IMU Front (0x29)");
     
     if (imuL_ok && imuR_ok) {
         // Use external crystal for better accuracy
@@ -52,7 +52,7 @@ uint16_t readBattery() {
     return (uint16_t)(busvoltage * 1000);
 }
 
-int16_t readMotorTemp() { 
+int16_t readTemp() { 
     // Use the Left IMU temperature as a proxy for the system/motor temp
     // The BNO055 returns an int8_t (signed byte)
     if (!sensorsReady) return 0;
@@ -60,11 +60,45 @@ int16_t readMotorTemp() {
 }
 
 uint8_t getErrorFlags() { 
+    static uint32_t lastCheckTime = 0;
+    static bool lowBatteryFlag = false;
+    static bool highBatteryFlag = false;
+    static bool highTempFlag = false;
+    
     uint8_t flags = 0;
     if (!sensorsReady) flags |= 0x01; // Sensor init failed
     
-    // Low voltage check
-    if (readBattery() < 14800) flags |= 0x02; // Low Battery (<14.8V)
+    // Battery and temperature checks - only every 1000ms to avoid blocking I2C reads every loop
+    uint32_t now = millis();
+    if (now - lastCheckTime >= 1000) {
+        lastCheckTime = now;
+        uint16_t battery = readBattery();
+        int16_t temp = readTemp();
+        
+        // Battery checks
+        if (battery < 14800) {
+            lowBatteryFlag = true;
+        } else {
+            lowBatteryFlag = false;
+        }
+        
+        if (battery > 17000) {
+            highBatteryFlag = true;
+        } else {
+            highBatteryFlag = false;
+        }
+        
+        // Temperature check (40°C)
+        if (temp > 40) {
+            highTempFlag = true;
+        } else {
+            highTempFlag = false;
+        }
+    }
+    
+    if (lowBatteryFlag) flags |= 0x02;  // Low Battery (<14.8V)
+    if (highBatteryFlag) flags |= 0x04; // High Battery (>17.0V)
+    if (highTempFlag) flags |= 0x08;    // High Temperature (>40°C)
     
     return flags; 
 }

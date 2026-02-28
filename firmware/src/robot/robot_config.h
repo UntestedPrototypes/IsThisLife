@@ -5,12 +5,12 @@
 
 #include <stdint.h>
 
-// Robot identification
-// Allow platformio.ini to override this with -DROBOT_ID=X
+// --- Robot Identification ---
 #ifndef ROBOT_ID
-    #define ROBOT_ID 99 // Default ID if not set in platformio.ini
+    #define ROBOT_ID 1 
 #endif
-#define CHANNEL 1 // Wifi channel (must match to controller channel)
+
+#define CHANNEL 1 
 
 // Controller MAC Address
 extern uint8_t controllerMac[6];
@@ -19,18 +19,22 @@ extern uint8_t controllerMac[6];
 #define WINDOW_SIZE 10
 #define MIN_VALID 1
 #define WINDOW_TIME_MS 500
-#define HEARTBEAT_LOSS_TIMEOUT_MS 500  // debounce period
+#define HEARTBEAT_LOSS_TIMEOUT_MS 500
 
 // Telemetry constants
-#define TELEMETRY_INTERVAL 5  // Send telemetry every 5 packets
+#define TELEMETRY_INTERVAL 5
 
 // Confirmation timeout
-#define CONFIRM_TIMEOUT_MS 30000  // 30 second timeout
+#define CONFIRM_TIMEOUT_MS 30000
 
 // --- PIN DEFINITIONS ---
 #define MAIN_MOTOR_PIN 27
-#define SERVO_L_PIN 25
-#define SERVO_R_PIN 33
+
+// Serial Bus Pins for Waveshare ST3215
+#define SERVO_RX_PIN 16
+#define SERVO_TX_PIN 17
+
+// I2C Pins
 #define SDA_PIN 21
 #define SCL_PIN 22
 

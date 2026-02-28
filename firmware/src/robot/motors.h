@@ -7,14 +7,16 @@
 #include <ESP32Servo.h>
 #include "vectors.h"
 
-// Motor control functions
-void initMotors();
+bool initMotors();
 
-// Updated to accept RC microseconds (1000-2000)
+// Call this every loop cycle to run the PID
+void updateMotorLoop();
+
+// Helper to set the TARGETS
 void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us);
-
 void stopMotors();
 
+// MotorChannel (Retained strictly for the mainMotor PWM control)
 class MotorChannel {
 public:
   MotorChannel(uint8_t pin,
@@ -30,6 +32,8 @@ public:
   bool begin();
   uint16_t command(float controlNorm);
   uint16_t writeNeutral();
+  float computePID(float targetAngle, float currentAngle, float dt);
+  void resetPID();
   bool attached();
 
 private:
@@ -46,6 +50,8 @@ private:
   bool     _direction_inverted;
   Vec3     _PID;
   float    _angle_range;
+  float    _prevError;
+  float    _integral;
   Servo    _servo;
 };
 

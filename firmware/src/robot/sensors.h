@@ -12,7 +12,7 @@ bool initSensors();
 
 // Sensor reading functions
 uint16_t readBattery(); // Returns mV
-int16_t readMotorTemp(); // Returns degrees C
+int16_t readTemp(); // Returns degrees C
 uint8_t getErrorFlags();
 
 // Expose sensors for advanced logic (Sequence/PID)

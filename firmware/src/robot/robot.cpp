@@ -15,7 +15,7 @@
 #include "packet_handler.h"
 
 // Controller MAC Address (defined in robot_config.h)
-uint8_t controllerMac[6] = {0x28, 0x05, 0xA5, 0x6F, 0x3D, 0xC0};
+uint8_t controllerMac[6] = {0xB0, 0xCB, 0xD8, 0xC1, 0x6B, 0xE0};
 
 // -------------------- Setup --------------------
 void roleSetup() {
@@ -52,8 +52,14 @@ void roleSetup() {
     }
 
     // 3. Initialize Hardware
-    initSensors();
-    initMotors();
+    if (!initSensors()) {
+        Serial.println("DEBUG: Sensor initialization failed!");
+        return;
+    }
+    if (!initMotors()) {
+        Serial.println("DEBUG: Motor initialization failed!");
+        return;
+    }
 
     Serial.println("DEBUG: Robot setup complete");
     delay(1000);
@@ -100,6 +106,7 @@ void roleLoop() {
         stopMotors();
     }
 
+    updateMotorLoop();
 }
 
 #endif

@@ -2,22 +2,34 @@
 
 #include "motors.h"
 #include "robot_config.h"
+#include "Servo_ST3215.h"
 #include <Arduino.h>
 
 Vec3 default_pid(0.01f, 0.01f, 0.0f); 
 
 // Main Motor: 1000-2000us range, 1500 neutral
 MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, default_pid, 40.0f);
-// Left Servo
-MotorChannel servoL(SERVO_L_PIN, 500, 2500, 1500, 500, 75, false, default_pid, 15.0f);
-// Right Servo (Inverted)
-MotorChannel servoR(SERVO_R_PIN, 500, 2500, 1500, 500, 75, true, default_pid, 15.0f);
 
-void initMotors() {
+// ST3215 Servos (replaces servoL and servoR)
+Servo_ST3215 pendServos(1, 2);
+const int MAX_ST3215_SPEED = 2400; // Adjust this to match your desired max velocity
+
+bool initMotors() {
     Serial.println("DEBUG: Initializing Motors...");
-    mainMotor.begin();
-    servoL.begin();
-    servoR.begin();
+    
+    if (!mainMotor.begin()) {
+        Serial.println("ERROR: Failed to initialize Main Motor!");
+        return false;
+    }
+
+    // Initialize Serial1 for the ST3215 servos (using pins from robot_config.h)
+    if (!pendServos.begin(Serial1, SERVO_RX_PIN, SERVO_TX_PIN)) {
+        Serial.println("ERROR: Failed to init ST3215 Servos!");
+        return false;
+    } else {
+        pendServos.enableMotors();
+    }
+    return true;
 }
 
 // Helper to map 1000-2000us to -1.0 to 1.0
@@ -34,25 +46,27 @@ void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
     // 1. Normalize RC inputs (1000-2000) to Float (-1.0 to 1.0)
     float normVx = mapRcInput(vx_us);
     float normVy = mapRcInput(vy_us);
-    float normOmega = mapRcInput(omega_us);
+    // float normOmega = mapRcInput(omega_us); // Ignored: ST3215 library syncs both motors
 
     // 2. Apply Kinematics
     mainMotor.command(normVx);
 
-    float leftCmd = normVy + normOmega;
-    float rightCmd = normVy - normOmega;
-
-    servoL.command(leftCmd);
-    servoR.command(rightCmd);
+    // 3. Command the ST3215 Servos
+    int targetVelocity = (int)(normVy * MAX_ST3215_SPEED);
+    pendServos.setVelocity(targetVelocity);
 }
 
 void stopMotors() { 
     mainMotor.writeNeutral();
-    servoL.writeNeutral();
-    servoR.writeNeutral();
+    pendServos.stop();
 }
 
-// --- MotorChannel Implementation (Unchanged) ---
+// Ensure this is called in roleLoop() so the library can track encoder wraps!
+void updateMotorLoop() {
+    //pendServos.update();
+}
+
+// --- MotorChannel Implementation (Unchanged, for Main Motor) ---
 MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us, 
                            uint16_t neutral_us, uint16_t speed_range_us, 
                            uint16_t min_delta_us, bool direction_inverted, 
@@ -64,8 +78,13 @@ MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us,
 
 bool MotorChannel::begin() {
     int r = _servo.attach(_pin, _min_us, _max_us);
+
+    if (!attached()) {
+        Serial.printf("ERROR: Motor on pin %d failed to attach!\n", _pin);
+    }
+
     writeNeutral();
-    return (r != 0);
+    return attached();
 }
 
 bool MotorChannel::attached() { return _servo.attached(); }

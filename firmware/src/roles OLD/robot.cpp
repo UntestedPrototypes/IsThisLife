@@ -42,7 +42,7 @@ uint32_t confirmRequestTime = 0;
 
 // -------------------- Sensors --------------------
 uint16_t readBattery() { return 7400; }
-int16_t readMotorTemp() { return 35; }
+int16_t readTemp() { return 35; }
 uint8_t getErrorFlags() { return 0; }
 
 // -------------------- Motors --------------------
@@ -100,7 +100,7 @@ void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     }
     
     ack.battery_mv = readBattery();
-    ack.motor_temp = readMotorTemp();
+    ack.motor_temp = readTemp();
     ack.error_flags = getErrorFlags();
     ack.latency_ms = 808; // Placeholder, can be calculated if needed
 
@@ -250,7 +250,7 @@ void runSequenceStep() {
                 case 0:
                     Serial.println("SEQ: Sensor test started");
                     Serial.printf("Battery: %d mV\n", readBattery());
-                    Serial.printf("Temp: %d C\n", readMotorTemp());
+                    Serial.printf("Temp: %d C\n", readTemp());
                     sequenceStepStartTime = millis();
                     currentSequenceStep++;
                     break;
