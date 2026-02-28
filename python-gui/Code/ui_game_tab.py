@@ -7,7 +7,6 @@ import joystick_control
 from config import *
 
 class GameControllerTab:
-    # ... (Init and setup_ui remain the same) ...
     def __init__(self, notebook, save_callback=None, initial_assignments=None):
         self.frame = ttk.Frame(notebook)
         self.manager = joystick_control.get_manager()
@@ -23,10 +22,7 @@ class GameControllerTab:
 
     def get_frame(self): return self.frame
     
-    # ... (UI Setup code skipped, it is identical to previous version) ...
     def _setup_ui(self):
-        # COPY PREVIOUS UI SETUP HERE
-        # (It is unchanged from the last working version)
         global_frame = ttk.Frame(self.frame); global_frame.pack(fill=tk.X, padx=5, pady=5)
         ttk.Button(global_frame, text="↻ Scan Controllers", command=self.refresh_controllers).pack(side=tk.LEFT, padx=5)
         if self.save_callback: ttk.Button(global_frame, text="💾 Save All Configs", command=self.save_callback).pack(side=tk.RIGHT, padx=5)
@@ -34,8 +30,8 @@ class GameControllerTab:
         list_frame = ttk.LabelFrame(self.frame, text="Active Robot Assignments")
         list_frame.pack(fill=tk.X, padx=5, pady=5)
         self.tree = ttk.Treeview(list_frame, columns=("Robot", "Controller", "ID", "Limits"), show="headings", height=4)
-        self.tree.heading("Robot", text="Robot ID"); self.tree.heading("Controller", text="Controller Name"); self.tree.heading("ID", text="ID"); self.tree.heading("Limits", text="Max Speed %")
-        self.tree.column("Robot", width=60); self.tree.column("Controller", width=200); self.tree.column("ID", width=40); self.tree.column("Limits", width=120)
+        self.tree.heading("Robot", text="Robot ID"); self.tree.heading("Controller", text="Controller Name"); self.tree.heading("ID", text="ID"); self.tree.heading("Limits", text="Config")
+        self.tree.column("Robot", width=60); self.tree.column("Controller", width=200); self.tree.column("ID", width=40); self.tree.column("Limits", width=180)
         self.tree.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         
@@ -45,11 +41,21 @@ class GameControllerTab:
         edit_frame = ttk.LabelFrame(self.frame, text="Edit Configuration")
         edit_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         sel_frame = ttk.Frame(edit_frame); sel_frame.pack(fill=tk.X, padx=5, pady=10)
+        
+        # Robot Selection
         ttk.Label(sel_frame, text="Target Robot:").pack(side=tk.LEFT, padx=5)
         self.robot_var = tk.IntVar(value=1)
         self.robot_combo = ttk.Combobox(sel_frame, textvariable=self.robot_var, width=5); self.robot_combo['values'] = [1]; self.robot_combo.pack(side=tk.LEFT, padx=5); self.robot_combo.bind("<<ComboboxSelected>>", self._on_robot_select)
+        
+        # Controller Selection
         ttk.Label(sel_frame, text="Link Controller:").pack(side=tk.LEFT, padx=(20, 5))
-        self.controller_combo = ttk.Combobox(sel_frame, state="readonly", width=35); self.controller_combo.pack(side=tk.LEFT, padx=5); self.controller_combo.bind("<<ComboboxSelected>>", self._on_controller_select)
+        self.controller_combo = ttk.Combobox(sel_frame, state="readonly", width=30); self.controller_combo.pack(side=tk.LEFT, padx=5); self.controller_combo.bind("<<ComboboxSelected>>", self._on_controller_select)
+
+        # Global Deadzone
+        ttk.Label(sel_frame, text="Deadzone %:").pack(side=tk.LEFT, padx=(20, 5))
+        self.deadzone_var = tk.IntVar(value=10)
+        self.deadzone_sb = ttk.Spinbox(sel_frame, from_=0, to=50, increment=5, width=5, textvariable=self.deadzone_var)
+        self.deadzone_sb.pack(side=tk.LEFT, padx=5)
 
         map_frame = ttk.Frame(edit_frame); map_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         keys = ["vx", "vy", "omega", "estop", "arm", "autopilot"]
@@ -76,28 +82,41 @@ class GameControllerTab:
         current = self.robot_combo.get()
         assigned = list(self.assignments.keys())
         all_ids = sorted(list(set(robot_ids + assigned + [1])))
-        self.robot_combo['values'] = all_ids
-        if not current and all_ids: self.robot_combo.current(0)
+        
+        # FIX: Only update the combo if the list actually changed to prevent focus stealing
+        current_values = list(self.robot_combo['values'])
+        try:
+            current_values = [int(x) for x in current_values]
+        except:
+            pass
+            
+        if current_values != all_ids:
+            self.robot_combo['values'] = all_ids
+            if not current and all_ids: 
+                self.robot_combo.current(0)
 
     def _load_initial_assignments(self, saved_data):
         default_scales = {'vx': 100, 'vy': 100, 'omega': 100}
         for r_id_str, val in saved_data.items():
             try:
                 r_id = int(r_id_str)
-                # Load instance_index if present, default to 0
                 idx = val.get('instance_index', 0) if isinstance(val, dict) else 0
                 
                 if isinstance(val, dict):
                     self.assignments[r_id] = {
                         'id': None, 'guid': val.get('guid', ''), 
-                        'instance_index': idx, # NEW
-                        'name': "Searching...", 'scales': val.get('scales', default_scales.copy())
+                        'instance_index': idx, 
+                        'name': "Searching...", 
+                        'scales': val.get('scales', default_scales.copy()),
+                        'deadzone': val.get('deadzone', 10)
                     }
                 else:
                     self.assignments[r_id] = {
                         'id': None, 'guid': str(val), 
                         'instance_index': 0, 
-                        'name': "Searching...", 'scales': default_scales.copy()
+                        'name': "Searching...", 
+                        'scales': default_scales.copy(),
+                        'deadzone': 10
                     }
             except ValueError: pass
 
@@ -106,8 +125,9 @@ class GameControllerTab:
         for r_id, info in self.assignments.items():
             data[str(r_id)] = {
                 'guid': info['guid'],
-                'instance_index': info['instance_index'], # SAVE THIS
-                'scales': info['scales']
+                'instance_index': info['instance_index'],
+                'scales': info['scales'],
+                'deadzone': info['deadzone']
             }
         return data
 
@@ -116,22 +136,15 @@ class GameControllerTab:
             r_id = self.robot_var.get()
             c_name = self.controller_combo.get()
             if not c_name and r_id in self.assignments:
-                # Keep existing
                 ctrl_id = self.assignments[r_id]['id']
                 ctrl_guid = self.assignments[r_id]['guid']
                 ctrl_name = self.assignments[r_id]['name']
-                # Try to preserve index
                 idx = self.assignments[r_id]['instance_index']
             elif c_name in self.controller_map:
-                # New selection
                 ctrl = self.controller_map[c_name]
                 ctrl_id = ctrl.id
                 ctrl_guid = ctrl.guid
                 ctrl_name = ctrl.name
-                
-                # --- CALCULATE INSTANCE INDEX ---
-                # How many controllers with this same GUID are in the map, 
-                # but have an ID lower than this one?
                 match_count = 0
                 sorted_ids = sorted(self.manager.controllers.keys())
                 for jid in sorted_ids:
@@ -149,15 +162,19 @@ class GameControllerTab:
                 try: scales[key] = max(0, min(100, int(self.learning_button_map[key]["scale_sb"].get())))
                 except: scales[key] = 100
                 
+            dz = 10
+            try: dz = max(0, min(50, int(self.deadzone_var.get())))
+            except: pass
+                
             self.assignments[r_id] = {
                 'id': ctrl_id, 'guid': ctrl_guid, 
-                'instance_index': idx, # STORE IT
-                'name': ctrl_name, 'scales': scales
+                'instance_index': idx, 
+                'name': ctrl_name, 'scales': scales,
+                'deadzone': dz
             }
             self._update_assignment_list()
         except Exception as e: messagebox.showerror("Error", str(e))
 
-    # ... (Other UI methods unchanged: refresh_controllers, on_selects, unassign, learning) ...
     def refresh_controllers(self):
         controllers = self.manager.get_all()
         values = [f"{c.name} (ID: {c.id})" for c in controllers]
@@ -166,9 +183,11 @@ class GameControllerTab:
         self._update_assignment_list()
         if values and self.controller_combo.get() not in values: self.controller_combo.current(0); self._on_controller_select(None)
         elif not values: self.controller_combo.set(""); self.selected_controller_id = None
+
     def _on_controller_select(self, event):
         name = self.controller_combo.get()
         if name in self.controller_map: self.selected_controller_id = self.controller_map[name].id; self._update_mapping_display()
+
     def _unassign_selected(self):
         selected = self.tree.selection()
         if selected:
@@ -176,10 +195,12 @@ class GameControllerTab:
                 r_id = int(str(self.tree.item(selected)['values'][0]).replace("Robot ", ""))
                 if r_id in self.assignments: del self.assignments[r_id]; self._update_assignment_list(); self._on_robot_select(None)
             except: pass
+
     def _start_learning(self, key):
         if self.selected_controller_id is None: return
         ctrl = self.manager.get_controller(self.selected_controller_id);
         if ctrl: ctrl.start_learning(key); self.learning_button_map[key]["btn"].configure(text="Press...", state="disabled")
+
     def check_learning(self):
         if self.selected_controller_id is None: return
         ctrl = self.manager.get_controller(self.selected_controller_id)
@@ -190,18 +211,24 @@ class GameControllerTab:
                 if success or timeout: widgets["btn"].configure(text="Bind Input", state="normal"); 
                 if success: self._update_mapping_display()
                 break
+
     def _update_mapping_display(self):
         if self.selected_controller_id is None: return
         ctrl = self.manager.get_controller(self.selected_controller_id)
         if ctrl: 
             for key, widgets in self.learning_button_map.items(): widgets["map_label"].configure(text=ctrl.get_mapping_text(key))
+
     def update_display_values(self):
         if self.selected_controller_id is None: return
         ctrl = self.manager.get_controller(self.selected_controller_id)
         if ctrl:
-            vals = ctrl.get_control_values()
+            try: dz = max(0, min(50, int(self.deadzone_var.get()))) / 100.0
+            except: dz = 0.10
+            
+            vals = ctrl.get_control_values(deadzone=dz)
             for key, val in vals.items():
                 if key in self.learning_button_map: self.learning_button_map[key]["val_label"].configure(text=f"{val:.2f}")
+
     def _on_robot_select(self, event):
         try:
             r_id = self.robot_var.get()
@@ -209,6 +236,9 @@ class GameControllerTab:
                 scales = self.assignments[r_id]['scales']
                 for key, val in scales.items():
                     if key in self.learning_button_map and self.learning_button_map[key]["scale_sb"]: self.learning_button_map[key]["scale_sb"].set(val)
+                
+                self.deadzone_var.set(self.assignments[r_id].get('deadzone', 10))
+                
                 guid = self.assignments[r_id]['guid']
                 found = False
                 for name, ctrl in self.controller_map.items():
@@ -218,19 +248,31 @@ class GameControllerTab:
             else:
                 for key in ["vx", "vy", "omega"]:
                     if self.learning_button_map[key]["scale_sb"]: self.learning_button_map[key]["scale_sb"].set(100)
+                self.deadzone_var.set(10)
+                self.controller_combo.set("") # Clear controller box if no assignment exists
         except: pass
+
     def _on_tree_select(self, event):
         selected_item = self.tree.selection()
         if not selected_item: return
         try:
             r_id = int(str(self.tree.item(selected_item)['values'][0]).replace("Robot ", "")); self.robot_var.set(r_id); self._on_robot_select(None)
         except ValueError: pass
+
     def _update_assignment_list(self):
         for item in self.tree.get_children(): self.tree.delete(item)
         for r_id, info in self.assignments.items():
-            c_id = info['id']; is_connected = (c_id is not None and self.manager.get_controller(c_id)); self._last_connection_states[r_id] = is_connected
+            c_id = info['id']
+            # FIX: Force evaluation to strict Boolean to prevent infinite UI redraw loops
+            is_connected = bool(c_id is not None and self.manager.get_controller(c_id) is not None)
+            
+            self._last_connection_states[r_id] = is_connected
             display_name = info['name'] if is_connected else f"{info.get('name', 'Unknown')} (Disconnected)"
-            sc = info['scales']; self.tree.insert("", "end", values=(f"Robot {r_id}", display_name, c_id if c_id is not None else "-", f"F:{sc['vx']}% L:{sc['vy']}% R:{sc['omega']}%"))
+            sc = info['scales']
+            dz = info.get('deadzone', 10)
+            limits_str = f"Spd: {sc['vx']}% | DZ: {dz}%"
+            self.tree.insert("", "end", values=(f"Robot {r_id}", display_name, c_id if c_id is not None else "-", limits_str))
+
     def get_assignment_names(self):
         names = {}
         for r_id, info in self.assignments.items():
@@ -239,33 +281,31 @@ class GameControllerTab:
             else: names[r_id] = "Disconnected"
         return names
 
-    # --- CHANGED: Use instance_index for lookup ---
     def get_active_commands(self):
         self.manager.update()
         commands = {}
         ui_needs_update = False
         
-        # We don't need 'used_ids' anymore because instance_index handles collisions
-        
         for r_id, info in self.assignments.items():
             c_id = info['id']
             ctrl = self.manager.get_controller(c_id)
-            is_connected = (ctrl is not None)
+            is_connected = bool(ctrl is not None)
 
             if self._last_connection_states.get(r_id) != is_connected: ui_needs_update = True
             
             if is_connected:
-                # ... same command logic ...
-                raw_cmd = ctrl.get_control_values()
+                dz = info.get('deadzone', 10) / 100.0
+                raw_cmd = ctrl.get_control_values(deadzone=dz)
+                
                 scales = info['scales']
                 scaled_cmd = raw_cmd.copy()
                 scaled_cmd['vx'] *= (scales['vx'] / 100.0)
                 scaled_cmd['vy'] *= (scales['vy'] / 100.0)
                 scaled_cmd['omega'] *= (scales['omega'] / 100.0)
                 commands[r_id] = scaled_cmd
+                
                 if info['name'] != ctrl.name: info['name'] = ctrl.name; ui_needs_update = True
             else:
-                # --- AUTO RECONNECT USING INDEX ---
                 idx = info.get('instance_index', 0)
                 new_id = self.manager.find_id_by_guid(info['guid'], instance_index=idx)
                 

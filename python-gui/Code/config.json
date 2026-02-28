@@ -8,8 +8,9 @@
             "scales": {
                 "vx": 50,
                 "vy": 50,
-                "omega": 100
-            }
+                "omega": 0
+            },
+            "deadzone": 5
         }
     }
 }

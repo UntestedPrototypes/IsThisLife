@@ -8,11 +8,9 @@ import platform
 from config import *
 
 # --- MAC OS FIX ---
-# Prevent Pygame from opening a window/dock icon which conflicts with Tkinter
 if platform.system() == "Darwin":
     os.environ["SDL_VIDEODRIVER"] = "dummy"
 
-# Initialize pygame once globally
 pygame.init()
 pygame.joystick.init()
 
@@ -66,11 +64,24 @@ class JoystickController:
         except: pass
         return 0
 
-    def get_control_values(self):
-        # Raw Inputs
+    def _apply_deadzone(self, val, dz):
+        """Applies deadzone and rescales remaining travel for smooth control"""
+        if abs(val) < dz:
+            return 0.0
+        sign = 1.0 if val > 0 else -1.0
+        # Smoothly map from (dz -> 1.0) to (0.0 -> 1.0)
+        return sign * ((abs(val) - dz) / (1.0 - dz))
+
+    def get_control_values(self, deadzone=0.10):
+        # Read Raw Inputs
         raw_vx = self.get_input_value(self.mappings["vx"])
         raw_vy = -self.get_input_value(self.mappings["vy"]) 
         raw_omega = self.get_input_value(self.mappings["omega"])
+        
+        # Apply Deadzone math
+        dz_vx = self._apply_deadzone(raw_vx, deadzone)
+        dz_vy = self._apply_deadzone(raw_vy, deadzone)
+        dz_omega = self._apply_deadzone(raw_omega, deadzone)
         
         # Autopilot Logic
         btn_val = self.get_input_value(self.mappings["autopilot"])
@@ -94,22 +105,23 @@ class JoystickController:
         
         self.autopilot_btn_prev = is_pressed
         
-        final_vx = raw_vx
-        final_vy = raw_vy
-        
         if self.autopilot_active:
-            # Cruise Control Handling (Stick adjusts speed)
-            if abs(raw_vx) > 0.1:
-                self.cruise_speed -= (raw_vx * CRUISE_ADJUST_RATE)
+            # Use the deadzoned axis to adjust cruise speed
+            if abs(dz_vx) > 0.0:
+                self.cruise_speed -= (dz_vx * CRUISE_ADJUST_RATE)
             
             self.cruise_speed = max(-1.0, min(1.0, self.cruise_speed))
             
             final_vx = self.cruise_speed
-            # Left/Right (Strafe) remains ACTIVE during Autopilot
-            final_vy = raw_vy 
+            final_vy = dz_vy 
+            final_omega = dz_omega
+        else:
+            final_vx = dz_vx
+            final_vy = dz_vy
+            final_omega = dz_omega
             
         return {
-            "vx": final_vx, "vy": final_vy, "omega": raw_omega,
+            "vx": final_vx, "vy": final_vy, "omega": final_omega,
             "estop": self.get_input_value(self.mappings["estop"]),
             "arm": self.get_input_value(self.mappings["arm"]),
             "autopilot": btn_val,
@@ -117,7 +129,6 @@ class JoystickController:
             "autopilot_val": self.cruise_speed
         }
 
-    # Learning methods
     def start_learning(self, key):
         self.learning_mode = key; self.learning_timeout = time.time() + LEARNING_TIMEOUT_SECONDS; self.learning_baseline = self._get_all_axis_values()
         return True
