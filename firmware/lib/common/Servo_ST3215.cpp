@@ -1,9 +1,24 @@
 #if defined(ROLE_TESTING) || defined(ROLE_ROBOT)
 #include "Servo_ST3215.h"
 
+// Static task handle for the servo update task
+static TaskHandle_t servoTaskHandle = NULL;
+static Servo_ST3215* servoInstance = NULL;
+
+// RTOS Task - runs on Core 1
+void servoUpdateTask(void* parameter) {
+    Servo_ST3215* servo = (Servo_ST3215*)parameter;
+    
+    while (1) {
+        // Run servo update every 5ms on core 1
+        servo->update();
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+    }
+}
+
 Servo_ST3215::Servo_ST3215(int servoID1, int servoID2) 
-    : id1(servoID1), id2(servoID2), accel(50), 
-      torqueThreshold(400), rawTruePos1(0), rawTruePos2(0),
+    : id1(servoID1), id2(servoID2), accel(200), 
+      torqueThreshold(800), rawTruePos1(0), rawTruePos2(0),
       lastRaw1(0), lastRaw2(0), zeroOffset1(0), zeroOffset2(0), 
       currentVelCommand(0), minLimit(-999999), maxLimit(999999), 
       reverse2(true) {}
@@ -27,6 +42,7 @@ bool Servo_ST3215::begin(HardwareSerial& serialPort, int rx, int tx) {
     st.setMode(id2, SMS_STS_MODE_WHEEL);
     delay(10); 
 
+    
     // Initialize position tracking values from the 0-4095 range
     lastRaw1 = st.ReadPos(id1);
     lastRaw2 = st.ReadPos(id2);
@@ -34,9 +50,22 @@ bool Servo_ST3215::begin(HardwareSerial& serialPort, int rx, int tx) {
     // Graceful fallback if the initial read fails (-1)
     if (lastRaw1 < 0) lastRaw1 = 0;
     if (lastRaw2 < 0) lastRaw2 = 0;
-
+    
     rawTruePos1 = lastRaw1;
     rawTruePos2 = lastRaw2;
+    resetPositionToZero(); // Set current position as zero reference
+    
+    // Store instance and create FreeRTOS task on Core 1
+    servoInstance = this;
+    xTaskCreatePinnedToCore(
+        servoUpdateTask,      // Task function
+        "ServoUpdate",        // Task name
+        2048,                 // Stack size
+        this,                 // Parameter (this instance)
+        1,                    // Priority
+        &servoTaskHandle,     // Task handle
+        1                     // Core 1
+    );
 
     return true;
 }
@@ -85,50 +114,67 @@ void Servo_ST3215::update() {
     // 1. Update position tracking
     if (st.FeedBack(id1) != -1) trackWraps(1, st.ReadPos(-1));
     if (st.FeedBack(id2) != -1) trackWraps(2, st.ReadPos(-1));
-    // 1. Debug Output (Requested raw and continuous positions)
-    // rawTruePos1 and rawTruePos2 are now accessed as global variables
-    //Serial.printf("DEBUG | ID1 Raw: %d, Cont: %ld | ID2 Raw: %d, Cont: %ld\n", lastRaw1, rawTruePos1, lastRaw2, rawTruePos2);
 
-    // 2. Movement Logic (Limits, Deceleration, and Sync Correction)
+    // 2. Deceleration and Hard Stop (STEPPED - only write when factor changes significantly)
+    if (currentVelCommand != 0) {
+        long Pos1 = getPosition(id1);
+        float speedFactor = 1.0;
+
+        // --- A. Deceleration logic for overshooting ---
+        if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
+            speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
+        }
+        else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
+            speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
+        }
+
+        // --- B. Only write if speedFactor changed significantly (or is zero) ---
+        static float lastSpeedFactor = 1.0;
+        const float FACTOR_THRESHOLD = 0.1;  // Only write if difference >= 10%
+        
+        if (speedFactor <= 0 || abs(speedFactor - lastSpeedFactor) >= FACTOR_THRESHOLD) {
+            int baseSpeed = (int)(currentVelCommand * speedFactor);
+            int s1 = baseSpeed;
+            int s2 = (reverse2 ? -baseSpeed : baseSpeed);
+            st.WriteSpe(id1, (s16)s1, (u8)accel);
+            st.WriteSpe(id2, (s16)s2, (u8)accel);
+            lastSpeedFactor = speedFactor;
+            
+            if (speedFactor <= 0) {
+                currentVelCommand = 0;
+                Serial.println("Target limit reached. Motors halted.");
+                return;
+            }
+        }
+    }
+
+    // 3. Sync Correction and Motor Commands
     if (currentVelCommand != 0) {
         long Pos1 = getPosition(id1);
         long pos2 = getPosition(id2);
         float speedFactor = 1.0;
 
-        // --- A. Deceleration logic for overshooting ---
-        // Calculate factor if approaching Max Limit
+        // Recalculate speedFactor for sync logic
         if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
             speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
         }
-        // Calculate factor if approaching Min Limit
         else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
             speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
         }
 
-        // Hard stop if limit is reached or exceeded
-        if (speedFactor <= 0) {
-            st.WriteSpe(id1, 0, (u8)accel);
-            st.WriteSpe(id2, 0, (u8)accel);
-            currentVelCommand = 0;
-            Serial.println("Target limit reached. Motors halted.");
-            return;
-        }
-
-        // --- B. Sync Correction Logic ---
-        // Calculate drift (How far apart are the two motors?)
-        // If drift is positive, ID1 is "ahead" of ID2
+        // --- C. Sync Correction Logic ---
         long drift = Pos1 - pos2;
         int syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
 
-        // --- C. Calculate Final Speeds ---
+        // --- D. Calculate Final Speeds ---
         int baseSpeed = (int)(currentVelCommand * speedFactor);
         
-        // Apply sync correction: slow down the leading motor, speed up the lagging one
+        // Apply sync correction
         int s1 = baseSpeed - syncCorrection;
         int s2_val = baseSpeed + syncCorrection;
         int s2 = reverse2 ? -s2_val : s2_val;
 
-        // --- D. Send Commands ---
+        // --- E. Send Commands ---
         st.WriteSpe(id1, (s16)s1, (u8)accel);
         st.WriteSpe(id2, (s16)s2, (u8)accel);
     }

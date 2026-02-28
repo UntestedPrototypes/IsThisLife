@@ -107,6 +107,11 @@ void roleLoop() {
     }
 
     updateMotorLoop();
+    // readMainIMUAngle();
+    // readMainIMUMotorAxisRotation();
+
+    // readSecondaryIMUAngle();
+    readSecondaryIMUMotorAxisRotation();
 }
 
 #endif

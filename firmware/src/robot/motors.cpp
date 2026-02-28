@@ -12,7 +12,7 @@ MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, default_
 
 // ST3215 Servos (replaces servoL and servoR)
 Servo_ST3215 pendServos(1, 2);
-const int MAX_ST3215_SPEED = 2400; // Adjust this to match your desired max velocity
+const int MAX_ST3215_SPEED = 3400; // Max velocity in the ST3215's wheel mode (units step/s mim: 0, max: 3400)
 
 bool initMotors() {
     Serial.println("DEBUG: Initializing Motors...");
@@ -58,6 +58,7 @@ void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
 
 void stopMotors() { 
     mainMotor.writeNeutral();
+    pendServos.setVelocity(0);
     pendServos.stop();
 }
 

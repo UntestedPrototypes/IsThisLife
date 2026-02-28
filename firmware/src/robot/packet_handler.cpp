@@ -91,18 +91,18 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
                 if (heartbeatValid()) {
                     motorsEnabled = true;
                     setMotors(pkt.vx, pkt.vy, pkt.omega);
-                    Serial.print("DEBUG: CONTROL ACTIVE");
+                    //Serial.print("DEBUG: CONTROL ACTIVE");
                 } else {
                     motorsEnabled = false;
                     stopMotors();
                     Serial.print("DEBUG: Heartbeat invalid, stopping motors");
                 }
             } else {
-                Serial.print("DEBUG: E-STOP active ");
+                //Serial.print("DEBUG: E-STOP active ");
             }
             // Updated format specifiers for uint16_t (%u)
-            Serial.printf(" - type=%d robot_id=%d vx=%u vy=%u omega=%u hb=%u\n", 
-                          pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
+            // Serial.printf(" - type=%d robot_id=%d vx=%u vy=%u omega=%u hb=%u\n", 
+            //               pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
             break;
             
         default:
