@@ -7,22 +7,21 @@
 
 Vec3 default_pid(0.01f, 0.01f, 0.0f); 
 
-// Main Motor: 1000-2000us range, 1500 neutral
 MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, default_pid, 40.0f);
-
-// ST3215 Servos (replaces servoL and servoR)
 Servo_ST3215 pendServos(1, 2);
-const int MAX_ST3215_SPEED = 3400; // Max velocity in the ST3215's wheel mode (units step/s mim: 0, max: 3400)
+const int MAX_ST3215_SPEED = 3400; 
+
+// Storage for target velocities asynchronously set by SystemTask
+static uint16_t target_vx = 1500;
+static uint16_t target_vy = 1500;
+static uint16_t target_omega = 1500;
 
 bool initMotors() {
     Serial.println("DEBUG: Initializing Motors...");
-    
     if (!mainMotor.begin()) {
         Serial.println("ERROR: Failed to initialize Main Motor!");
         return false;
     }
-
-    // Initialize Serial1 for the ST3215 servos (using pins from robot_config.h)
     if (!pendServos.begin(Serial1, SERVO_RX_PIN, SERVO_TX_PIN)) {
         Serial.println("ERROR: Failed to init ST3215 Servos!");
         return false;
@@ -32,26 +31,28 @@ bool initMotors() {
     return true;
 }
 
-// Helper to map 1000-2000us to -1.0 to 1.0
 float mapRcInput(uint16_t input_us) {
-    // Clamp for safety
     if (input_us < 1000) input_us = 1000;
     if (input_us > 2000) input_us = 2000;
-    
-    // Center at 1500, range +/- 500
     return (float)(input_us - 1500) / 500.0f;
 }
 
+void setTargetVelocities(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
+    target_vx = vx_us;
+    target_vy = vy_us;
+    target_omega = omega_us;
+}
+
 void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
-    // 1. Normalize RC inputs (1000-2000) to Float (-1.0 to 1.0)
-    float normVx = mapRcInput(vx_us);
-    float normVy = mapRcInput(vy_us);
-    // float normOmega = mapRcInput(omega_us); // Ignored: ST3215 library syncs both motors
+    setTargetVelocities(vx_us, vy_us, omega_us);
+}
 
-    // 2. Apply Kinematics
+// Strictly called by ControlTask on Core 1 to apply targets safely
+void executeMotorCommands() {
+    float normVx = mapRcInput(target_vx);
+    float normVy = mapRcInput(target_vy);
+
     mainMotor.command(normVx);
-
-    // 3. Command the ST3215 Servos
     int targetVelocity = (int)(normVy * MAX_ST3215_SPEED);
     pendServos.setVelocity(targetVelocity);
 }
@@ -62,12 +63,11 @@ void stopMotors() {
     pendServos.stop();
 }
 
-// Ensure this is called in roleLoop() so the library can track encoder wraps!
 void updateMotorLoop() {
     //pendServos.update();
 }
 
-// --- MotorChannel Implementation (Unchanged, for Main Motor) ---
+// --- MotorChannel Implementation (Unchanged) ---
 MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us, 
                            uint16_t neutral_us, uint16_t speed_range_us, 
                            uint16_t min_delta_us, bool direction_inverted, 
@@ -79,11 +79,7 @@ MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us,
 
 bool MotorChannel::begin() {
     int r = _servo.attach(_pin, _min_us, _max_us);
-
-    if (!attached()) {
-        Serial.printf("ERROR: Motor on pin %d failed to attach!\n", _pin);
-    }
-
+    if (!attached()) Serial.printf("ERROR: Motor on pin %d failed to attach!\n", _pin);
     writeNeutral();
     return attached();
 }

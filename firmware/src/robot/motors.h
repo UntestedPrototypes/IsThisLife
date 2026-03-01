@@ -13,10 +13,14 @@ bool initMotors();
 void updateMotorLoop();
 
 // Helper to set the TARGETS
+void setTargetVelocities(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us);
 void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us);
+
+// Called safely by ControlTask to write target states to hardware pins
+void executeMotorCommands();
 void stopMotors();
 
-// MotorChannel (Retained strictly for the mainMotor PWM control)
+// MotorChannel class remains exactly the same below...
 class MotorChannel {
 public:
   MotorChannel(uint8_t pin,

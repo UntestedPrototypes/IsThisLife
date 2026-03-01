@@ -4,6 +4,10 @@
 #define ROBOT_CONFIG_H
 
 #include <stdint.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 // --- Robot Identification ---
 #ifndef ROBOT_ID
@@ -14,6 +18,12 @@
 
 // Controller MAC Address
 extern uint8_t controllerMac[6];
+
+// --- RTOS Sync Objects ---
+extern SemaphoreHandle_t i2cMutex;
+extern SemaphoreHandle_t stateMutex;
+extern QueueHandle_t rxQueue;
+extern TaskHandle_t controlTaskHandle;
 
 // Heartbeat monitoring constants
 #define WINDOW_SIZE 10

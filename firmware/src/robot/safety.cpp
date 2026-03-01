@@ -4,13 +4,13 @@
 #include "motors.h"
 
 // Safety state
-bool estopActive = true;  // Start in E-STOP
-bool motorsEnabled = false;
+volatile bool estopActive = true;  // Start in E-STOP
+volatile bool motorsEnabled = false;
 
 void activateEstop() {
     estopActive = true;
     motorsEnabled = false;
-    stopMotors();
+    //stopMotors();
 }
 
 void clearEstop() {

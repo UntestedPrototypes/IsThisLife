@@ -14,104 +14,143 @@
 #include "sequence.h"
 #include "packet_handler.h"
 
-// Controller MAC Address (defined in robot_config.h)
+// Controller MAC Address
 uint8_t controllerMac[6] = {0xB0, 0xCB, 0xD8, 0xC1, 0x6B, 0xE0};
+
+// RTOS Objects
+SemaphoreHandle_t i2cMutex;
+SemaphoreHandle_t stateMutex;
+TaskHandle_t controlTaskHandle = NULL;
+QueueHandle_t rxQueue;
+
+// Task Prototypes
+void systemTask(void *pvParameters);
+void controlTask(void *pvParameters);
 
 // -------------------- Setup --------------------
 void roleSetup() {
     Serial.begin(115200);
     Serial.println("DEBUG: Robot setup starting...");
-    Serial.printf("DEBUG: Robot Configuration -> ID: %d | WiFi Channel: %d\n", ROBOT_ID, CHANNEL);
 
-    // Wifi and ESP-NOW Initialization
+    // 1. Initialize FreeRTOS Mutexes & Queues
+    i2cMutex = xSemaphoreCreateMutex();
+    stateMutex = xSemaphoreCreateMutex();
+    rxQueue = xQueueCreate(10, sizeof(RxPacket));
+
+    // 2. Wifi and ESP-NOW Initialization
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     delay(100);
     esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
 
-    // 1. Initialize ESP-NOW
     if (esp_now_init() != ESP_OK) {
         Serial.println("DEBUG: Error initializing ESP-NOW");
         return;
     }
     esp_now_register_recv_cb(onReceive);
-    delay(100);
-
-    // 2. Add Controller Peer
-    Serial.print("Robot MAC address: ");
-    Serial.println(WiFi.macAddress());
-
+    
     esp_now_peer_info_t peer{};
     memcpy(peer.peer_addr, controllerMac, 6);
     peer.channel = CHANNEL;
     peer.encrypt = false;
-    if (esp_now_add_peer(&peer) != ESP_OK) {
-        Serial.println("DEBUG: Failed to add controller as peer");
-    } else {
-        Serial.println("DEBUG: Controller added as peer");
-    }
+    esp_now_add_peer(&peer);
 
     // 3. Initialize Hardware
-    if (!initSensors()) {
-        Serial.println("DEBUG: Sensor initialization failed!");
-        return;
-    }
-    if (!initMotors()) {
-        Serial.println("DEBUG: Motor initialization failed!");
-        return;
-    }
+    if (!initSensors()) Serial.println("DEBUG: Sensor init failed!");
+    if (!initMotors()) Serial.println("DEBUG: Motor init failed!");
 
-    Serial.println("DEBUG: Robot setup complete");
+    // 4. Spawn FreeRTOS Tasks
+    xTaskCreatePinnedToCore(systemTask, "SystemTask", 8192, NULL, 2, NULL, 0); // Core 0
+    xTaskCreatePinnedToCore(controlTask, "ControlTask", 8192, NULL, 3, &controlTaskHandle, 1); // Core 1
+
+    Serial.println("DEBUG: Setup complete. Tasks running.");
     delay(1000);
-    Serial.println("DEBUG: Starting in E-STOP");
+}
+
+// -------------------- Tasks --------------------
+
+void controlTask(void *pvParameters) {
+    uint32_t notificationValue;
+
+    while(true) {
+        // Wait up to 10ms for a wake-up notification (Fast-Path E-STOP)
+        // If 10ms passes, it naturally unblocks to run the 100Hz motor loop.
+        xTaskNotifyWait(0x00, ULONG_MAX, &notificationValue, pdMS_TO_TICKS(10));
+
+        // 1. Safely Read IMUs (Core 1 exclusive)
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            // float roll, pitch, yaw;
+            // getMainAxisOrientation(&roll, &pitch, &yaw);
+            // readSecondaryIMUMotorAxisRotation();
+            xSemaphoreGive(i2cMutex);
+        }
+
+        // 2. Safely Get Target States
+        bool enabled = false;
+        if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            enabled = motorsEnabled && !estopActive && !sequenceActive && !waitingForConfirmation;
+            xSemaphoreGive(stateMutex);
+        }
+
+        // 3. Command Hardware strictly on Core 1
+        if (enabled) {
+            executeMotorCommands(); // Apply variables to hardware
+        } else {
+            stopMotors();           // Execute safely without Serial collision
+        }
+        
+        updateMotorLoop();
+    }
+}
+
+void systemTask(void *pvParameters) {
+    RxPacket pkt;
+    while(true) {
+        // 1. Process all incoming ESP-NOW packets from the queue
+        while (xQueueReceive(rxQueue, &pkt, 0) == pdTRUE) {
+            processPacket(pkt.mac, pkt.data, pkt.len);
+        }
+
+        // 2. Manage State & Safety
+        if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            bool hb_ok = heartbeatValid();
+            uint8_t errors = 0;
+
+            // Safely read hardware flags without interrupting I2C flow on Core 1
+            if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+                errors = getErrorFlags();
+                xSemaphoreGive(i2cMutex);
+            }
+
+            if ((errors != 0 || !hb_ok) && !estopActive) {
+                if (errors != 0) Serial.printf("CRITICAL ERROR: 0x%02X\n", errors);
+                if (!hb_ok) Serial.println("DEBUG: E-STOP triggered due to lost heartbeat");
+                
+                estopActive = true;
+                motorsEnabled = false;
+                cancelConfirmation();
+                if (errors != 0) stopSequence();
+                
+                // Wake up Core 1 immediately so it processes the new E-STOP state!
+                if (controlTaskHandle != NULL) {
+                    xTaskNotify(controlTaskHandle, 1, eSetBits);
+                }
+                sendAckTelemetry(PACKET_ESTOP, 0, 0); 
+            }
+
+            if (sequenceActive) runSequenceStep();
+            checkConfirmationTimeout();
+
+            xSemaphoreGive(stateMutex);
+        }
+
+        // Run system loop at 50Hz
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 // -------------------- Loop --------------------
 void roleLoop() {
-    uint32_t now = millis();
-
-    // Existing Sequence Logic
-    if (sequenceActive) runSequenceStep();
-
-    // Existing Confirmation Logic
-    checkConfirmationTimeout();
-
-    // Existing Heartbeat Logic
-    bool hb_ok = heartbeatValid();
-
-    // Check Error Flags for Safety
-    uint8_t errors = getErrorFlags();
-
-    // Check for error (Sensors failed or Battery Low)
-    if (errors != 0 && !estopActive) {
-        Serial.printf("CRITICAL ERROR (Flags: 0x%02X): Triggering Auto E-STOP\n", errors);
-        activateEstop();
-        cancelConfirmation();
-        stopSequence(); // Ensure sequence stops too
-        sendAckTelemetry(PACKET_ESTOP, 0, 0); // Notify controller immediately
-    }
-    // ----------------------------------------
-
-    // Existing Heartbeat E-STOP Logic
-    if (!hb_ok && !estopActive) {
-        Serial.println("DEBUG: E-STOP triggered due to lost heartbeat");
-        activateEstop();
-        cancelConfirmation();
-        sendAckTelemetry(PACKET_ESTOP, 0, 0);
-    }
-
-    // Existing Motor Safety Logic
-    if ((estopActive || sequenceActive || waitingForConfirmation) && motorsEnabled) {
-        motorsEnabled = false;
-        stopMotors();
-    }
-
-    updateMotorLoop();
-    // readMainIMUAngle();
-    // readMainIMUMotorAxisRotation();
-
-    // readSecondaryIMUAngle();
-    readSecondaryIMUMotorAxisRotation();
+    vTaskDelete(NULL); // FreeRTOS manages execution now
 }
-
 #endif

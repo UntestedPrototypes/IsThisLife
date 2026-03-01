@@ -13,101 +13,108 @@
 #include <string.h>
 
 void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
-    if (len < 1) return;
+    if (len < 1 || len > 250) return;
     
     uint8_t pkt_type = data[0];
+
+    // ==========================================
+    // FAST PATH: E-STOP ONLY
+    // ==========================================
+    if (pkt_type == PACKET_ESTOP) {
+        // DO NOT use stateMutex here! This is an ISR.
+        // Booleans are atomic on 32-bit systems, so this is safe.
+        estopActive = true;
+        motorsEnabled = false;
+
+        // WAKE UP MOTOR TASK INSTANTLY
+        if (controlTaskHandle != NULL) {
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xTaskNotifyFromISR(controlTaskHandle, 1, eSetBits, &xHigherPriorityTaskWoken);
+            if(xHigherPriorityTaskWoken) portYIELD_FROM_ISR();
+        }
+    }
+
+    // ==========================================
+    // SLOW PATH: Send ALL packets to Queue
+    // ==========================================
+    RxPacket rxPkt;
+    memcpy(rxPkt.mac, mac, 6);
+    memcpy(rxPkt.data, data, len);
+    rxPkt.len = len;
     
-    // ========== Handle CONFIRM packet ==========
+    // Non-blocking send from the callback context to the SystemTask queue
+    xQueueSendFromISR(rxQueue, &rxPkt, NULL);
+}
+
+void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
+    uint8_t pkt_type = data[0];
+    
     if (pkt_type == PACKET_CONFIRM && len >= sizeof(ConfirmPacket)) {
         ConfirmPacket confirm{};
         memcpy(&confirm, data, sizeof(confirm));
         if (confirm.robot_id == ROBOT_ID) {
+            xSemaphoreTake(stateMutex, portMAX_DELAY);
             handleConfirmation(confirm.step_id, confirm.approved);
+            xSemaphoreGive(stateMutex);
         }
         return;
     }
     
-    // ========== Handle START_SEQUENCE packet ==========
     if (pkt_type == PACKET_START_SEQUENCE && len >= sizeof(StartSequencePacket)) {
         StartSequencePacket seq{};
         memcpy(&seq, data, sizeof(seq));
         if (seq.robot_id == ROBOT_ID) {
+            xSemaphoreTake(stateMutex, portMAX_DELAY);
             startSequence(seq.sequence_id);
+            xSemaphoreGive(stateMutex);
         }
         return;
     }
     
-    // Handle regular control packets
-    if (len < sizeof(ControlPacket)) {
-        Serial.printf("DEBUG: Received packet too small (%d bytes)\n", len);
-        return;
-    }
+    if (len < sizeof(ControlPacket)) return;
     
     ControlPacket pkt{};
     memcpy(&pkt, data, sizeof(pkt));
-
     if (pkt.robot_id != 0 && pkt.robot_id != ROBOT_ID) return;
 
+    xSemaphoreTake(stateMutex, portMAX_DELAY);
+    
     uint32_t now = millis();
     recordHeartbeat(now);
 
     switch(pkt.type) {
         case PACKET_DISCOVER:
-            Serial.println("DEBUG: DISCOVER received");
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP:
-            Serial.println("DEBUG: E-STOP received");
-            activateEstop();
+            // Hardware was already stopped by Fast Path. 
+            // Gracefully cancel sequences and send the ACK.
             cancelConfirmation();
             stopSequence();
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP_CLEAR:
-            Serial.println("DEBUG: E-STOP cleared / ARM received");
             clearEstop();
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_CONTROL:
             controlPacketCount++;
-            
             if (controlPacketCount >= TELEMETRY_INTERVAL) {
                 sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
                 controlPacketCount = 0;
             }
 
-            if (sequenceActive || waitingForConfirmation) {
-                motorsEnabled = false;
-                stopMotors();
-                if (sequenceActive) {
-                    Serial.println("DEBUG: Sequence active, motors disabled");
-                } else {
-                    Serial.println("DEBUG: Waiting for confirmation, motors disabled");
-                }
-            } else if (!estopActive) {
-                if (heartbeatValid()) {
-                    motorsEnabled = true;
-                    setMotors(pkt.vx, pkt.vy, pkt.omega);
-                    //Serial.print("DEBUG: CONTROL ACTIVE");
-                } else {
-                    motorsEnabled = false;
-                    stopMotors();
-                    Serial.print("DEBUG: Heartbeat invalid, stopping motors");
-                }
-            } else {
-                //Serial.print("DEBUG: E-STOP active ");
+            // Normal control update logic
+            if (!sequenceActive && !waitingForConfirmation && !estopActive && heartbeatValid()) {
+                motorsEnabled = true;
+                setTargetVelocities(pkt.vx, pkt.vy, pkt.omega);
             }
-            // Updated format specifiers for uint16_t (%u)
-            // Serial.printf(" - type=%d robot_id=%d vx=%u vy=%u omega=%u hb=%u\n", 
-            //               pkt.type, pkt.robot_id, pkt.vx, pkt.vy, pkt.omega, pkt.heartbeat);
-            break;
-            
-        default:
-            Serial.printf("DEBUG: Unknown packet type %d\n", pkt.type);
             break;
     }
+    
+    xSemaphoreGive(stateMutex);
 }
 #endif // ROLE_ROBOT

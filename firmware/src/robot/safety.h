@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 // Safety state
-extern bool estopActive;
-extern bool motorsEnabled;
+extern volatile bool estopActive;
+extern volatile bool motorsEnabled;
 
 // Functions
 void activateEstop();
