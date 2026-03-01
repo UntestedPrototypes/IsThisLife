@@ -1,124 +1,94 @@
 """
-Parse telemetry data from robots
+Binary Telemetry Parser
+Handles 0xAA 0x55 (Telemetry) and 0xFF 0xAA (Confirmation Requests) synchronization.
 """
-from config import *
+import struct
+from collections import namedtuple
 
+# Namedtuples for clean data access in the UI
+TelemetryData = namedtuple('TelemetryData', [
+    'robot_id', 'acked_type', 'heartbeat', 'status', 
+    'battery_mv', 'motor_temp', 'error_flags', 'latency_ms',
+    'main_roll', 'main_pitch', 'pend_roll', 'pend_pitch'
+])
 
-class TelemetryData:
-    """Container for robot telemetry data"""
+ConfirmRequest = namedtuple('ConfirmRequest', [
+    'type', 'robot_id', 'heartbeat', 'step_id', 'message'
+])
+
+# Format Strings (Little-endian <)
+# AckTelemetryPacket: 2*uint8, 1*uint32, 1*uint8, 1*uint16, 1*int16, 1*uint8, 1*uint16, 4*float
+# B=uint8, I=uint32, H=uint16, h=int16, f=float
+BINARY_FORMAT_TELEMETRY = "<BBIBHhBHffff"
+PAYLOAD_SIZE_TELEMETRY = struct.calcsize(BINARY_FORMAT_TELEMETRY)
+
+# RequestConfirmPacket: 2*uint8, 1*uint32, 1*uint8, 32*char
+BINARY_FORMAT_CONFIRM = "<BBIB32s"
+PAYLOAD_SIZE_CONFIRM = struct.calcsize(BINARY_FORMAT_CONFIRM)
+
+SYNC_HEADER_TELEMETRY = b'\xAA\x55'
+SYNC_HEADER_CONFIRM = b'\xFF\xAA'
+
+class TelemetryParser:
     def __init__(self):
-        self.robot_id = 0
-        self.heartbeat = 0
-        self.status = STATUS_OK
-        self.battery_mv = 0
-        self.temperature_c = 0
-        self.error_flags = 0
-        self.rtt_ms = 0
-    
-    def update_from_dict(self, data):
-        """Update telemetry from parsed dictionary"""
-        self.robot_id = data.get("ID", 0)
-        self.heartbeat = data.get("HB", 0)
-        self.status = data.get("STATUS", STATUS_OK)
-        self.battery_mv = data.get("BATT", 0)
-        self.temperature_c = data.get("TEMP", 0)
-        self.error_flags = data.get("ERR", 0)
-        self.rtt_ms = data.get("RTT", 0)
-    
-    def get_status_text(self):
-        """Get human-readable status text"""
-        status_map = {
-            STATUS_OK: "OK",
-            STATUS_ESTOP: "E-STOP",
-            STATUS_WAITING_CONFIRM: "WAITING",
-            STATUS_RUNNING_SEQUENCE: "RUNNING SEQ"
-        }
-        return status_map.get(self.status, "UNKNOWN")
-    
-    def get_status_color(self):
-        """Get color for status display"""
-        color_map = {
-            STATUS_OK: "green",
-            STATUS_ESTOP: "red",
-            STATUS_WAITING_CONFIRM: "orange",
-            STATUS_RUNNING_SEQUENCE: "blue"
-        }
-        return color_map.get(self.status, "gray")
+        self.buffer = bytearray()
 
+    def process_bytes(self, new_bytes):
+        """
+        Scans raw serial bytes for headers and returns a list of data objects.
+        Automatically aligns to the nearest sync header to avoid garbage data.
+        """
+        self.buffer.extend(new_bytes)
+        packets = []
 
-class ConfirmationRequest:
-    """Container for confirmation request data"""
-    def __init__(self, robot_id, step_id, message):
-        self.robot_id = robot_id
-        self.step_id = step_id
-        self.message = message
+        while len(self.buffer) >= 2:
+            # Look for both possible headers
+            t_idx = self.buffer.find(SYNC_HEADER_TELEMETRY)
+            c_idx = self.buffer.find(SYNC_HEADER_CONFIRM)
 
-
-def parse_telemetry_line(line):
-    """
-    Parse a telemetry line from the robot
-    
-    Args:
-        line: String like "ID=1 HB=123 STATUS=0 BATT=7400 TEMP=35 ERR=0x00 RTT=10"
-    
-    Returns:
-        TelemetryData object or None if parsing failed
-    """
-    if not line.startswith("ID="):
-        return None
-    
-    try:
-        telemetry = {}
-        for part in line.split():
-            key, val = part.split("=")
-            if key == "ERR":
-                telemetry[key] = int(val, 16)  # Hex value
-            else:
-                telemetry[key] = int(val)
-        
-        data = TelemetryData()
-        data.update_from_dict(telemetry)
-        return data
-    except Exception:
-        return None
-
-
-def parse_confirmation_request(line):
-    """
-    Parse a confirmation request line from the robot
-    
-    Args:
-        line: String like "CONFIRM_REQ ID=1 STEP=1 MSG=Start calibration?"
-    
-    Returns:
-        ConfirmationRequest object or None if parsing failed
-    """
-    if not line.startswith("CONFIRM_REQ"):
-        return None
-    
-    try:
-        parts = {}
-        tokens = line.split(" ")
-        
-        for t in tokens:
-            if t.startswith("ID="):
-                parts["ID"] = t.split("=", 1)[1]
-            elif t.startswith("STEP="):
-                parts["STEP"] = t.split("=", 1)[1]
-            elif t.startswith("MSG="):
-                # Everything after MSG= is the message
-                parts["MSG"] = line.split("MSG=", 1)[1]
+            # Find which header appears first in the buffer
+            indices = [i for i in [t_idx, c_idx] if i != -1]
+            if not indices:
+                # No header found; keep the last byte in case it's the start of a header
+                self.buffer = self.buffer[-1:]
                 break
-        
-        robot_id = int(parts.get("ID", 0))
-        step_id = int(parts.get("STEP", 0))
-        message = parts.get("MSG", "Unknown step")
-        
-        return ConfirmationRequest(robot_id, step_id, message)
-    except Exception:
-        return None
+            
+            header_idx = min(indices)
+            
+            # Discard any noise/debug text bytes before the first valid header
+            if header_idx > 0:
+                self.buffer = self.buffer[header_idx:]
+                continue
 
+            # Check which packet type we found and if we have enough data for it
+            if self.buffer.startswith(SYNC_HEADER_TELEMETRY):
+                if len(self.buffer) < (2 + PAYLOAD_SIZE_TELEMETRY):
+                    break # Wait for more bytes
+                
+                payload = self.buffer[2 : 2 + PAYLOAD_SIZE_TELEMETRY]
+                try:
+                    unpacked = struct.unpack(BINARY_FORMAT_TELEMETRY, payload)
+                    packets.append(TelemetryData(*unpacked))
+                except struct.error as e:
+                    print(f"Parser Unpack Error (Telemetry): {e}")
+                
+                # Advance buffer past header and payload
+                self.buffer = self.buffer[2 + PAYLOAD_SIZE_TELEMETRY:]
 
-def is_debug_line(line):
-    """Check if line is a debug message"""
-    return line.startswith("DEBUG:") or line.startswith("Python")
+            elif self.buffer.startswith(SYNC_HEADER_CONFIRM):
+                if len(self.buffer) < (2 + PAYLOAD_SIZE_CONFIRM):
+                    break # Wait for more bytes
+                
+                payload = self.buffer[2 : 2 + PAYLOAD_SIZE_CONFIRM]
+                try:
+                    unpacked = struct.unpack(BINARY_FORMAT_CONFIRM, payload)
+                    # Decode the message string and strip null terminators
+                    msg = unpacked[4].split(b'\x00')[0].decode('utf-8', errors='replace')
+                    packets.append(ConfirmRequest(unpacked[0], unpacked[1], unpacked[2], unpacked[3], msg))
+                except struct.error as e:
+                    print(f"Parser Unpack Error (Confirm): {e}")
+                
+                # Advance buffer past header and payload
+                self.buffer = self.buffer[2 + PAYLOAD_SIZE_CONFIRM:]
+
+        return packets

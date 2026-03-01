@@ -131,7 +131,6 @@ uint16_t MotorChannel::writeNeutral() { return writeMicroseconds(_neutral_us); }
 
 uint16_t MotorChannel::writeMicroseconds(uint16_t pulse) {
     if (attached()) {
-        Serial.printf("DEBUG: Writing pulse %d us to motor on pin %d\n", pulse, _pin);
         _servo.writeMicroseconds(pulse);
         _current_pulse = pulse;
     }

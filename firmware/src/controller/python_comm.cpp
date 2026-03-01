@@ -8,28 +8,18 @@
 bool python_connected = false;
 uint32_t lastPythonComm = 0;
 
-void forwardTelemetryToPython(const AckTelemetryPacket &ack) {
-    // Send telemetry as text line
-    Serial.printf(
-        "ID=%d HB=%u STATUS=%d BATT=%u TEMP=%d ERR=0x%02X RTT=%u\n",
-        ack.robot_id,
-        ack.heartbeat,
-        ack.status,
-        ack.battery_mv,
-        ack.motor_temp,
-        ack.error_flags,
-        ack.latency_ms
-    );
+void forwardTelemetryToPython(const AckTelemetryPacket& ack) {
+    uint8_t header[2] = {0xAA, 0x55};
+    Serial.write(header, 2); // Send sync bytes
+    Serial.write((uint8_t*)&ack, sizeof(AckTelemetryPacket)); // Send binary payload
+    Serial.flush(); 
 }
 
-void forwardConfirmRequestToPython(const RequestConfirmPacket &req) {
-    // Send confirmation request as text line
-    Serial.printf(
-        "CONFIRM_REQ ID=%d STEP=%d MSG=%s\n",
-        req.robot_id,
-        req.step_id,
-        req.message
-    );
+void forwardConfirmRequestToPython(const RequestConfirmPacket& req) {
+    uint8_t header[2] = {0xFF, 0xAA}; // Different header for requests
+    Serial.write(header, 2);
+    Serial.write((uint8_t*)&req, sizeof(RequestConfirmPacket));
+    Serial.flush();
 }
 
 void updatePythonConnection() {

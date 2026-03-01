@@ -20,6 +20,9 @@ class ConfigTab:
         self.baud_var = tk.StringVar(value=str(initial_baud if initial_baud else BAUD_RATE))
         self.is_connected = False
         
+        # ADD THIS LINE: State for the auto-reconnect switch (Default to False)
+        self.auto_reconnect_var = tk.BooleanVar(value=False) 
+        
         self._setup_ui()
         
     def get_frame(self):
@@ -45,6 +48,10 @@ class ConfigTab:
         # Connect Button
         self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self._toggle_connection)
         self.btn_connect.pack(side=tk.LEFT, padx=10)
+
+        # Auto-Reconnect Checkbox
+        self.chk_auto = ttk.Checkbutton(conn_frame, text="Auto-Reconnect", variable=self.auto_reconnect_var)
+        self.chk_auto.pack(side=tk.LEFT, padx=5)
         
         # --- Terminal / Log ---
         log_frame = ttk.LabelFrame(self.frame, text="System Log")
@@ -120,3 +127,6 @@ class ConfigTab:
             return int(self.baud_var.get())
         except:
             return BAUD_RATE
+        
+    def is_auto_reconnect_enabled(self):
+        return self.auto_reconnect_var.get()

@@ -35,6 +35,19 @@ void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     ack.error_flags = getErrorFlags();
     ack.latency_ms = 808; // Placeholder, can be calculated if needed
 
+    
+    // Fetch and attach IMU Data
+    float mRoll, mPitch, mYaw;
+    getMainAxisOrientation(&mRoll, &mPitch, &mYaw);
+    
+    float pRoll, pPitch;
+    getFullPendulumOrientation(&pRoll, &pPitch);
+    
+    ack.main_roll = mRoll;
+    ack.main_pitch = mPitch;
+    ack.pend_roll = pRoll;
+    ack.pend_pitch = pPitch;
+
     esp_err_t res = esp_now_send(controllerMac, (uint8_t*)&ack, sizeof(ack));
     //Serial.printf("DEBUG: Telemetry sent - type=%d heartbeat=%u status=%d result=%d\n", type, hb, ack.status, res);
 }

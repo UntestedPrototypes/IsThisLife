@@ -32,12 +32,17 @@ struct __attribute__((packed)) ControlPacket {
 struct __attribute__((packed)) AckTelemetryPacket {
     uint8_t robot_id;
     uint8_t acked_type;
-    uint32_t heartbeat;
-    uint8_t status;
-    uint16_t battery_mv;
-    int16_t motor_temp;
-    uint8_t error_flags;
-    uint16_t latency_ms;    // round-trip latency
+    uint32_t heartbeat;    // Offset 2
+    uint8_t status;       // Offset 6
+    uint16_t battery_mv;  // Offset 7
+    int16_t motor_temp;   // Offset 9
+    uint8_t error_flags;  // Offset 11
+    uint16_t latency_ms;  // Offset 12
+    
+    float main_roll;      // Offset 14
+    float main_pitch;     // Offset 18
+    float pend_roll;      // Offset 22
+    float pend_pitch;     // Offset 26
 };
 
 // Robot requests confirmation for a calibration step

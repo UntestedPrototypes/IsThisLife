@@ -2,8 +2,10 @@
 #ifndef ROBOT_COMMANDS_H
 #define ROBOT_COMMANDS_H
 
+#include <Arduino.h>
 #include <stdint.h>
 
+void dispatchPacket(uint8_t robot_id, void* pkt, size_t size);
 // Functions to send commands to robots
 void sendHeartbeat();
 void sendArmRobot(uint8_t robot_id);
