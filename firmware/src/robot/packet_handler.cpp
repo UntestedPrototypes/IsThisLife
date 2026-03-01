@@ -84,18 +84,21 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
 
     switch(pkt.type) {
         case PACKET_DISCOVER:
+            Serial.println("DEBUG: DISCOVER received");
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP:
             // Hardware was already stopped by Fast Path. 
             // Gracefully cancel sequences and send the ACK.
+            Serial.println("DEBUG: E-STOP received");
             cancelConfirmation();
             stopSequence();
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP_CLEAR:
+            Serial.println("DEBUG: E-STOP cleared / ARM received");
             clearEstop();
             sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
@@ -111,6 +114,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             if (!sequenceActive && !waitingForConfirmation && !estopActive && heartbeatValid()) {
                 motorsEnabled = true;
                 setTargetVelocities(pkt.vx, pkt.vy, pkt.omega);
+                //Serial.printf("DEBUG: CONTROL ACTIVE - vx=%u vy=%u omega=%u\n", pkt.vx, pkt.vy, pkt.omega);
             }
             break;
     }

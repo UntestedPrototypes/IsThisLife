@@ -102,12 +102,12 @@ uint8_t getErrorFlags() {
     int16_t temp = readTemp();
     
     // 1. Battery Under-Voltage (drops below 10V / 10000mV)
-    if (batt > 0 && batt < 10000) { 
+    if (batt > 0 && batt < 14800) { 
         flags |= ERROR_BATT_UNDERVOLTAGE;
     }
     
     // 2. Battery Over-Voltage (spikes above 13V / 13000mV)
-    if (batt > 13000) { 
+    if (batt > 17000) { 
         flags |= ERROR_BATT_OVERVOLTAGE;
     }
 

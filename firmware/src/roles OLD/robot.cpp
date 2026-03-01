@@ -41,8 +41,8 @@ uint32_t confirmRequestTime = 0;
 
 
 // -------------------- Sensors --------------------
-uint16_t readBattery() { return 7400; }
-int16_t readTemp() { return 35; }
+uint16_t readBattery() { return 999; }
+int16_t readTemp() { return 99; }
 uint8_t getErrorFlags() { return 0; }
 
 // -------------------- Motors --------------------

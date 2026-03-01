@@ -125,19 +125,18 @@ class Dashboard:
         self.root.after(AUTO_RECONNECT_INTERVAL_MS, self._auto_reconnect_loop)
     
     def _handle_telemetry(self, telemetry_data):
-        # --- STRICT FILTERING ---
-        # Only process telemetry for robots we know about (Manually added or Config)
         if not self.robot_state.exists(telemetry_data.robot_id):
-            # Ignore random IDs (like 76 from noise)
             return
 
-        # 1. Update Live UI
+        # --- UPDATE LAST SEEN TIMESTAMP ---
+        self.robot_state.mark_seen(telemetry_data.robot_id)
+
         self.root.after(0, lambda: self.live_tab.update_telemetry(telemetry_data))
-        
-        # 2. Update Dropdown List
         self.root.after(0, lambda: self.game_tab.update_available_robots(
             self.robot_state.get_all_robot_ids()
         ))
+        is_estopped = (telemetry_data.status == STATUS_ESTOP)
+        self.robot_state.set_estop(telemetry_data.robot_id, is_estopped)
         
         # 3. Handle E-STOP
         is_estopped = (telemetry_data.status == STATUS_ESTOP)

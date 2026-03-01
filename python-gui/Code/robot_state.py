@@ -1,6 +1,7 @@
 """
 Manage state for multiple robots
 """
+import time
 from config import MAX_ROBOTS
 
 class RobotState:
@@ -12,7 +13,16 @@ class RobotState:
         self._prev_arm_input = False
         self.autopilot_active = False
         self.autopilot_speed = 0.0
+        # Initialize timestamp to now so it doesn't instantly timeout when manually added
+        self.last_telemetry_time = time.time() 
     
+    def mark_seen(self):
+        self.last_telemetry_time = time.time()
+        
+    def is_connected(self, timeout_sec=2.0):
+        """Returns True if a packet was received within the timeout period"""
+        return (time.time() - self.last_telemetry_time) < timeout_sec
+
     def set_estop(self, active):
         self.estop_active = active
         if active:
@@ -71,6 +81,8 @@ class RobotStateManager:
         return list(self.robots.keys())
 
     # Forwarding methods
+    def mark_seen(self, robot_id):
+        if self.exists(robot_id): self.get_robot(robot_id).mark_seen()
     def set_estop(self, robot_id, active):
         if self.exists(robot_id): self.get_robot(robot_id).set_estop(active)
     def set_autopilot(self, robot_id, active, speed):

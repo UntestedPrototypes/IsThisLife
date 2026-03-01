@@ -57,6 +57,8 @@ private:
   float    _prevError;
   float    _integral;
   Servo    _servo;
+
+  uint16_t _current_pulse;
 };
 
 #endif // MOTORS_H

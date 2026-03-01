@@ -14,6 +14,8 @@
 #include "sequence.h"
 #include "packet_handler.h"
 
+extern MotorChannel mainMotor;
+
 // Controller MAC Address
 uint8_t controllerMac[6] = {0xB0, 0xCB, 0xD8, 0xC1, 0x6B, 0xE0};
 
@@ -71,32 +73,42 @@ void roleSetup() {
 
 void controlTask(void *pvParameters) {
     uint32_t notificationValue;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // Exactly 100Hz
+
+    bool enabled = false;
 
     while(true) {
-        // Wait up to 10ms for a wake-up notification (Fast-Path E-STOP)
-        // If 10ms passes, it naturally unblocks to run the 100Hz motor loop.
-        xTaskNotifyWait(0x00, ULONG_MAX, &notificationValue, pdMS_TO_TICKS(10));
+        // Calculate exactly how much time is left in our 10ms window
+        TickType_t xNow = xTaskGetTickCount();
+        TickType_t xTimeToWait = 0;
+        if ((xNow - xLastWakeTime) < xFrequency) {
+            xTimeToWait = xFrequency - (xNow - xLastWakeTime);
+        }
 
-        // 1. Safely Read IMUs (Core 1 exclusive)
+        // Wait for E-STOP notification OR until the precise 10ms window expires
+        xTaskNotifyWait(0x00, ULONG_MAX, &notificationValue, xTimeToWait);
+        
+        // Reset the window timer to right NOW
+        xLastWakeTime = xTaskGetTickCount(); 
+
+        // 1. Safely Read IMUs
         if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            // float roll, pitch, yaw;
-            // getMainAxisOrientation(&roll, &pitch, &yaw);
-            // readSecondaryIMUMotorAxisRotation();
+            // IMU Reads go here...
             xSemaphoreGive(i2cMutex);
         }
 
         // 2. Safely Get Target States
-        bool enabled = false;
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
             enabled = motorsEnabled && !estopActive && !sequenceActive && !waitingForConfirmation;
             xSemaphoreGive(stateMutex);
         }
 
-        // 3. Command Hardware strictly on Core 1
+        // 3. Command Hardware
         if (enabled) {
-            executeMotorCommands(); // Apply variables to hardware
+            executeMotorCommands();
         } else {
-            stopMotors();           // Execute safely without Serial collision
+            stopMotors(); 
         }
         
         updateMotorLoop();

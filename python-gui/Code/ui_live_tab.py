@@ -190,6 +190,12 @@ class LiveViewTab:
             robot = self.robot_state.get_robot(r_id)
             banner = widgets["status_banner"]
             
+            # --- 1. Check Connection Timeout ---
+            if not robot.is_connected(timeout_sec=0.5):
+                banner.configure(text="CONNECTION LOST", bg="#7f8c8d", fg="white")
+                continue # Skip the rest of the logic if disconnected
+            
+            # --- 2. Live State Updates (Only runs if connected) ---
             # Update banner color immediately on state change (instant feedback)
             if not robot.estop_active:
                 if robot.autopilot_active:

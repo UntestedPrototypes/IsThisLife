@@ -48,12 +48,41 @@ void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
 }
 
 // Strictly called by ControlTask on Core 1 to apply targets safely
-void executeMotorCommands() {
-    float normVx = mapRcInput(target_vx);
-    float normVy = mapRcInput(target_vy);
+static float current_normVx = 0.0f;
+static float current_normVy = 0.0f;
 
-    mainMotor.command(normVx);
-    int targetVelocity = (int)(normVy * MAX_ST3215_SPEED);
+void executeMotorCommands() {
+    float target_normVx = mapRcInput(target_vx);
+    float target_normVy = mapRcInput(target_vy);
+
+    // Exponential Moving Average Filter
+    const float alpha = 0.4f; 
+    current_normVx = (alpha * target_normVx) + ((1.0f - alpha) * current_normVx);
+    current_normVy = (alpha * target_normVy) + ((1.0f - alpha) * current_normVy);
+
+    // Asymptote Snapping to prevent float micro-jitter
+    if (abs(current_normVx - target_normVx) < 0.002f) current_normVx = target_normVx;
+    if (abs(current_normVy - target_normVy) < 0.002f) current_normVy = target_normVy;
+
+    // ==============================================================
+    // NEW: 50Hz PWM Hardware Limiter
+    // ==============================================================
+    // Only update the physical PWM pin every 20ms (50Hz) to prevent 
+    // chopping the ESC's waveform, while allowing the RTOS to run at 100Hz.
+    static uint32_t last_pwm_update = 0;
+    uint32_t now = millis();
+    if (now - last_pwm_update >= 20) {
+        float locked_normVx = round(target_normVx * 50.0f) / 50.0f;
+        mainMotor.command(locked_normVx);
+        last_pwm_update = now;
+    }
+
+    // ==============================================================
+    // ST3215 Servos (Digital UART)
+    // ==============================================================
+    // These take digital serial commands, so they can easily handle 
+    // the full 100Hz update rate without glitching.
+    int targetVelocity = (int)(current_normVy * MAX_ST3215_SPEED);
     pendServos.setVelocity(targetVelocity);
 }
 
@@ -61,6 +90,10 @@ void stopMotors() {
     mainMotor.writeNeutral();
     pendServos.setVelocity(0);
     pendServos.stop();
+    
+    // Reset smoothers so it doesn't "ramp up" from an old value when re-enabled
+    current_normVx = 0.0f;
+    current_normVy = 0.0f;
 }
 
 void updateMotorLoop() {
@@ -74,7 +107,8 @@ MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us,
                            Vec3 PID, float angle_range)
 : _pin(pin), _min_us(min_us), _max_us(max_us), _neutral_us(neutral_us),
   _speed_range_us(speed_range_us), _min_delta_us(min_delta_us),
-  _direction_inverted(direction_inverted), _PID(PID), _angle_range(angle_range)
+  _direction_inverted(direction_inverted), _PID(PID), _angle_range(angle_range),
+  _current_pulse(0)
 {}
 
 bool MotorChannel::begin() {
@@ -96,7 +130,12 @@ uint16_t MotorChannel::command(float controlNorm) {
 uint16_t MotorChannel::writeNeutral() { return writeMicroseconds(_neutral_us); }
 
 uint16_t MotorChannel::writeMicroseconds(uint16_t pulse) {
-    if (_servo.attached()) _servo.writeMicroseconds(pulse);
+    if (attached()) {
+        Serial.printf("DEBUG: Writing pulse %d us to motor on pin %d\n", pulse, _pin);
+        _servo.writeMicroseconds(pulse);
+        _current_pulse = pulse;
+    }
+    
     return pulse;
 }
 
