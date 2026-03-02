@@ -39,15 +39,15 @@ void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     
     // Fetch and attach IMU Data
     float mRoll, mPitch, mYaw;
-    getMainAxisOrientation(&mRoll, &mPitch, &mYaw);
+    readMainIMU(&mRoll, &mPitch, &mYaw);
     
-    float pRoll, pPitch;
-    getFullPendulumOrientation(&pRoll, &pPitch);
+    float sRoll, sPitch, sYaw; // Added pYaw to catch the 3rd parameter
+    readSecondaryIMU(&sRoll, &sPitch, &sYaw);
     
     ack.main_roll = mRoll;
     ack.main_pitch = mPitch;
-    ack.pend_roll = pRoll;
-    ack.pend_pitch = pPitch;
+    ack.pend_roll = sRoll;
+    ack.pend_pitch = sPitch;
 
     esp_err_t res = esp_now_send(robotSettings.controller_mac, (uint8_t*)&ack, sizeof(ack));
     //Serial.printf("DEBUG: Telemetry sent - type=%d heartbeat=%u status=%d result=%d\n", type, hb, ack.status, res);

@@ -7,24 +7,20 @@
 
 bool initIMU();
 void waitForIMUCalibration();
-void runGravityAlignmentCalibration();
+void CalibrateIMUOffset();
 
 // Needed by system_monitor.cpp
 int16_t getIMUTemp();
 
-// --- Raw Orientation Data ---
-void readMainIMUQuaternion(float* qw, float* qx, float* qy, float* qz);
-void readSecondaryIMUQuaternion(float* qw, float* qx, float* qy, float* qz);
+// --- Processed & Zeroed Orientation Data ---
+void readMainIMU(float* roll, float* pitch, float* yaw);
+void readSecondaryIMU(float* roll, float* pitch, float* yaw);
 
-// --- Processed Orientation Data ---
-void getMainAxisOrientation(float* roll, float* pitch, float* yaw);
-void getFullPendulumOrientation(float* internalRoll, float* internalPitch);
-float readSecondaryIMUAngle();
+void printIMU();
 
-void printSecondaryIMUAngles();
-void getSecondaryIMUCalibration(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag);
-void tareSecondaryIMU();
-void getZeroedSecondaryIMUAngles(float* roll, float* pitch, float* yaw);
+// --- Calibration Status ---
+// Returns the lowest calibration state (0-3) among all sensors on both IMUs
+void getIMUCalibrationState(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag);
 
 #endif // IMU_HANDLER_H
 #endif // ROLE_ROBOT

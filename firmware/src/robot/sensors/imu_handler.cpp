@@ -10,9 +10,6 @@
 Adafruit_BNO055 imuSecondary = Adafruit_BNO055(55, 0x28);
 Adafruit_BNO055 imuMain = Adafruit_BNO055(55, 0x29);
 
-// Store the "zero" reference quaternion (defaults to identity quaternion)
-float zero_qw = 1.0f, zero_qx = 0.0f, zero_qy = 0.0f, zero_qz = 0.0f;
-
 bool initIMU() {
     if (!imuMain.begin() || !imuSecondary.begin()) {
         Serial.println("ERROR: IMU initialization failed");
@@ -40,17 +37,28 @@ int16_t getIMUTemp() {
 }
 
 void waitForIMUCalibration() {
-    uint8_t sys = 0, gyro = 0, accel = 0, mag = 0;
+    uint8_t mSys, mGyro, mAccel, mMag;
+    uint8_t sSys, sGyro, sAccel, sMag;
     bool ledState = false; 
-    
-    pinMode(LED_PIN, OUTPUT);
-    
-    Serial.println("Waiting for ALL sensors to fully calibrate (Level 3).");
-    Serial.println("Perform calibration movements (figure-8, tilting, resting)...");
+        
+    Serial.println("Waiting for BOTH IMUs to fully calibrate (Level 3).");
+    Serial.println("Move the robot and pendulums until all values reach 3.");
 
-    while (gyro < 3 || accel < 3 || mag < 3) {
-        getSecondaryIMUCalibration(&sys, &gyro, &accel, &mag);
-        Serial.printf("Cal Status -> Sys: %u, Gyro: %u, Accel: %u, Mag: %u\n", sys, gyro, accel, mag);
+    while (true) {
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            imuMain.getCalibration(&mSys, &mGyro, &mAccel, &mMag);
+            imuSecondary.getCalibration(&sSys, &sGyro, &sAccel, &sMag);
+            xSemaphoreGive(i2cMutex);
+        }
+
+        Serial.printf("Main Cal -> G:%u A:%u M:%u | Sec Cal -> G:%u A:%u M:%u\n", 
+                      mGyro, mAccel, mMag, sGyro, sAccel, sMag);
+
+        // Break loop only if all hardware sensors (Gyro, Accel, Mag) on both chips are 3
+        if (mGyro >= 3 && mAccel >= 3 && mMag >= 3 && 
+            sGyro >= 3 && sAccel >= 3 && sMag >= 3) {
+            break;
+        }
         
         ledState = !ledState;
         digitalWrite(LED_PIN, ledState);
@@ -58,10 +66,10 @@ void waitForIMUCalibration() {
     }
     
     digitalWrite(LED_PIN, HIGH); 
-    Serial.println("All sensors are fully calibrated! Safe to tare and run.");
+    Serial.println("Both IMUs are fully calibrated!");
 }
 
-void runGravityAlignmentCalibration() {
+void CalibrateIMUOffset() {
     Serial.println("\n--- IMU MOUNTING OFFSET CALIBRATION ---");
 
     // STEP 1: UPRIGHT (Balance Point)
@@ -99,7 +107,7 @@ void runGravityAlignmentCalibration() {
     imu::Vector<3> g_nose(nose_x/100.0f, nose_y/100.0f, nose_z/100.0f);
 
     // --- COORDINATE MAPPING ---
-    imu::Vector<3> robot_Z = g_upright * -1.0f; 
+    imu::Vector<3> robot_Z = g_upright; 
     robot_Z.normalize();
 
     imu::Vector<3> robot_X = g_nose;
@@ -155,112 +163,80 @@ void runGravityAlignmentCalibration() {
     Serial.println(" CALIBRATION SUCCESSFUL & SAVED TO FLASH! ");
 }
 
-void readMainIMUQuaternion(float* qw, float* qx, float* qy, float* qz) {
-    if (!sensorsReady) { *qw=1; *qx=0; *qy=0; *qz=0; return; }
+void readMainIMU(float* roll, float* pitch, float* yaw) {
+    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
     
-    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        imu::Quaternion quat = imuMain.getQuat();
-        *qw = quat.w(); *qx = quat.x(); *qy = quat.y(); *qz = quat.z();
-        xSemaphoreGive(i2cMutex);
-    } else {
-        *qw=1; *qx=0; *qy=0; *qz=0;
+    if (sensorsReady) {
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            imu::Quaternion quat = imuMain.getQuat();
+            qw = quat.w(); qx = quat.x(); qy = quat.y(); qz = quat.z();
+            xSemaphoreGive(i2cMutex);
+        }
     }
-}
-
-void readSecondaryIMUQuaternion(float* qw, float* qx, float* qy, float* qz) {
-    if (!sensorsReady) { *qw=1; *qx=0; *qy=0; *qz=0; return; }
     
-    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        imu::Quaternion quat = imuSecondary.getQuat();
-        multiplyQuaternions(quat.w(), quat.x(), quat.y(), quat.z(), 
-                            robotSettings.imu_off_w, robotSettings.imu_off_x, 
-                            robotSettings.imu_off_y, robotSettings.imu_off_z, 
-                            qw, qx, qy, qz);
-        xSemaphoreGive(i2cMutex);
-    }
-}
-
-void getMainAxisOrientation(float* roll, float* pitch, float* yaw) {
-    float qw, qx, qy, qz;
-    readMainIMUQuaternion(&qw, &qx, &qy, &qz);
+    // Convert directly to zeroed Euler angles
     quaternionToEuler(qw, qx, qy, qz, roll, pitch, yaw);
 }
 
-void getFullPendulumOrientation(float* internalRoll, float* internalPitch) {
-    if (!sensorsReady) return;
-
-    float mw, mx, my, mz;
-    readMainIMUQuaternion(&mw, &mx, &my, &mz);
+void readSecondaryIMU(float* roll, float* pitch, float* yaw) {
+    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
     
-    float sw, sx, sy, sz;
-    readSecondaryIMUQuaternion(&sw, &sx, &sy, &sz);
-
-    float mw_inv = mw;
-    float mx_inv = -mx;
-    float my_inv = -my;
-    float mz_inv = -mz;
-
-    float rw, rx, ry, rz;
-    multiplyQuaternions(mw_inv, mx_inv, my_inv, mz_inv, sw, sx, sy, sz, &rw, &rx, &ry, &rz);
-
-    float dummyYaw;
-    quaternionToEuler(rw, rx, ry, rz, internalRoll, internalPitch, &dummyYaw);
-}
-
-float readSecondaryIMUAngle() {
-    float relRoll, relPitch;
-    getFullPendulumOrientation(&relRoll, &relPitch);
-    
-    static float filtered = 0.0f;
-    filtered = (relRoll * 0.3f) + (filtered * 0.7f);
-    return filtered;
-}
-
-void printSecondaryIMUAngles() {
-    float roll, pitch, yaw;
-    uint8_t sys, gyro, accel, mag;
-
-    getZeroedSecondaryIMUAngles(&roll, &pitch, &yaw);
-    getSecondaryIMUCalibration(&sys, &gyro, &accel, &mag);
-
-    Serial.printf("Secondary IMU -> Roll: %6.2f, Pitch: %6.2f, Yaw: %6.2f | Cal (0-3) -> Sys: %u, Gyro: %u, Accel: %u, Mag: %u\n", 
-                  roll, pitch, yaw, sys, gyro, accel, mag);
-}
-
-void getSecondaryIMUCalibration(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag) {
-    if (!sensorsReady) { 
-        *sys = 0; *gyro = 0; *accel = 0; *mag = 0; 
-        return; 
+    if (sensorsReady) {
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            imu::Quaternion quat = imuSecondary.getQuat();
+            
+            // Multiply by the flashed mounting offset to "zero" the pendulum IMU
+            multiplyQuaternions(quat.w(), quat.x(), quat.y(), quat.z(), 
+                                robotSettings.imu_off_w, robotSettings.imu_off_x, 
+                                robotSettings.imu_off_y, robotSettings.imu_off_z, 
+                                &qw, &qx, &qy, &qz);
+                                
+            xSemaphoreGive(i2cMutex);
+        }
     }
     
+    // Convert offset-corrected quaternion to zeroed Euler angles
+    quaternionToEuler(qw, qx, qy, qz, roll, pitch, yaw);
+}
+
+void printIMU() {
+    float mRoll, mPitch, mYaw;
+    float sRoll, sPitch, sYaw;
+    uint8_t sys, gyro, accel, mag;
+    
+    // Get the lowest calibration states for each sensor type
+    getIMUCalibrationState(&sys, &gyro, &accel, &mag);
+
+    readMainIMU(&mRoll, &mPitch, &mYaw);
+    readSecondaryIMU(&sRoll, &sPitch, &sYaw);
+
+    Serial.printf("Main [R:%6.2f P:%6.2f Y:%6.2f] | Sec [R:%6.2f P:%6.2f Y:%6.2f] | Lowest Cal -> Sys:%u Gyro:%u Accel:%u Mag:%u\n", 
+                  mRoll, mPitch, mYaw, sRoll, sPitch, sYaw, sys, gyro, accel, mag);
+}
+
+void getIMUCalibrationState(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag) {
+    if (!sensorsReady) {
+        *sys = 0; *gyro = 0; *accel = 0; *mag = 0;
+        return;
+    }
+    
+    uint8_t mSys = 0, mGyro = 0, mAccel = 0, mMag = 0;
+    uint8_t sSys = 0, sGyro = 0, sAccel = 0, sMag = 0;
+    
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        imuSecondary.getCalibration(sys, gyro, accel, mag);
+        imuMain.getCalibration(&mSys, &mGyro, &mAccel, &mMag);
+        imuSecondary.getCalibration(&sSys, &sGyro, &sAccel, &sMag);
         xSemaphoreGive(i2cMutex);
     } else {
         *sys = 0; *gyro = 0; *accel = 0; *mag = 0;
+        return; 
     }
-}
 
-void tareSecondaryIMU() {
-    readSecondaryIMUQuaternion(&zero_qw, &zero_qx, &zero_qy, &zero_qz);
-    Serial.println("Secondary IMU Tared/Zeroed!");
-}
-
-void getZeroedSecondaryIMUAngles(float* roll, float* pitch, float* yaw) {
-    float curr_qw, curr_qx, curr_qy, curr_qz;
-    readSecondaryIMUQuaternion(&curr_qw, &curr_qx, &curr_qy, &curr_qz);
-
-    float inv_qw = zero_qw;
-    float inv_qx = -zero_qx;
-    float inv_qy = -zero_qy;
-    float inv_qz = -zero_qz;
-
-    float rel_w, rel_x, rel_y, rel_z;
-    multiplyQuaternions(inv_qw, inv_qx, inv_qy, inv_qz, 
-                        curr_qw, curr_qx, curr_qy, curr_qz, 
-                        &rel_w, &rel_x, &rel_y, &rel_z);
-
-    quaternionToEuler(rel_w, rel_x, rel_y, rel_z, roll, pitch, yaw);
+    // Compare and return the lowest value for each specific hardware sensor
+    *sys   = (mSys < sSys) ? mSys : sSys;
+    *gyro  = (mGyro < sGyro) ? mGyro : sGyro;
+    *accel = (mAccel < sAccel) ? mAccel : sAccel;
+    *mag   = (mMag < sMag) ? mMag : sMag;
 }
 
 #endif // ROLE_ROBOT

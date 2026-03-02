@@ -28,6 +28,8 @@ void controlTask(void *pvParameters);
 // -------------------- Setup --------------------
 void roleSetup() {
     Serial.begin(115200);
+    pinMode(LED_PIN, OUTPUT);
+
     loadAllPreferences();
     Serial.println("DEBUG: Robot setup starting...");
 
@@ -62,7 +64,7 @@ void roleSetup() {
     waitForIMUCalibration(); // Block until the IMU reports it's calibrated and ready
     Serial.print("DEBUG: Calibration complete. Put in zero-position and wait...");
     delay(5000);
-    runGravityAlignmentCalibration();
+    CalibrateIMUOffset();
     
     // 4. Spawn FreeRTOS Tasks
     xTaskCreatePinnedToCore(systemTask, "SystemTask", 8192, NULL, 2, NULL, 0); // Core 0
@@ -126,7 +128,7 @@ void systemTask(void *pvParameters) {
             processPacket(pkt.mac, pkt.data, pkt.len);
         }
 
-        printSecondaryIMUAngles();
+        printIMU();
 
         // 2. Manage State & Safety
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
