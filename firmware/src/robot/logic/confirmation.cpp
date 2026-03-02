@@ -1,10 +1,10 @@
 #ifdef ROLE_ROBOT
 
 #include "confirmation.h"
-#include "robot_config.h"
-#include "robot_preferences.h"
-#include "safety.h"
-#include "motors.h"
+#include "../config/robot_config.h"
+#include "../config/robot_preferences.h"
+#include "../control/safety.h"
+#include "../control/motors.h"
 #include "packets.h"
 #include <Arduino.h>
 #include <esp_now.h>

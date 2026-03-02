@@ -1,7 +1,7 @@
 #ifdef ROLE_ROBOT
 
 #include "motors.h"
-#include "robot_config.h"
+#include "../config/robot_config.h"
 #include "Servo_ST3215.h"
 #include <Arduino.h>
 
@@ -26,6 +26,7 @@ bool initMotors() {
         Serial.println("ERROR: Failed to init ST3215 Servos!");
         return false;
     } else {
+        pendServos.setOuterLimits(-12288, 12288); // set limits to +/- 3 full rotations (4096 units per rotation)
         pendServos.enableMotors();
     }
     return true;

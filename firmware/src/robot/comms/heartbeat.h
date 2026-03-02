@@ -4,7 +4,7 @@
 #define HEARTBEAT_H
 
 #include <stdint.h>
-#include "robot_config.h"
+#include "../config/robot_config.h"
 
 // Heartbeat monitoring state
 extern uint32_t lastValidHeartbeatTime;

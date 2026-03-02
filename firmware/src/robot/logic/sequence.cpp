@@ -2,10 +2,10 @@
 
 #include "sequence.h"
 #include "confirmation.h"
-#include "telemetry.h"
-#include "motors.h"
-#include "sensors.h"
-#include "safety.h"
+#include "../comms/telemetry.h"
+#include "../control/motors.h"
+#include "../sensors/sensors.h"
+#include "../control/safety.h"
 #include "packets.h"
 #include <Arduino.h>
 

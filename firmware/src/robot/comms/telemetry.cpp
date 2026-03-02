@@ -1,12 +1,12 @@
 #ifdef ROLE_ROBOT
 
 #include "telemetry.h"
-#include "robot_config.h"
-#include "robot_preferences.h"
-#include "safety.h"
-#include "confirmation.h"
-#include "sequence.h"
-#include "sensors.h"
+#include "../config/robot_config.h"
+#include "../config/robot_preferences.h"
+#include "../control/safety.h"
+#include "../logic/confirmation.h"
+#include "../logic/sequence.h"
+#include "../sensors/sensors.h"
 #include "packets.h"
 #include <Arduino.h>
 #include <esp_now.h>

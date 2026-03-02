@@ -1,7 +1,7 @@
 #ifdef ROLE_ROBOT
 
 #include "heartbeat.h"
-#include "robot_preferences.h"
+#include "../config/robot_preferences.h"
 #include <Arduino.h>
 
 // Heartbeat monitoring state

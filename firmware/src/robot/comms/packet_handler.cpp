@@ -1,15 +1,15 @@
 #ifdef ROLE_ROBOT
 
 #include "packet_handler.h"
-#include "robot_config.h"
-#include "robot_preferences.h"
+#include "../config/robot_config.h"
+#include "../config/robot_preferences.h"
 #include "packets.h"
 #include "telemetry.h"
-#include "safety.h"
-#include "motors.h"
+#include "../control/safety.h"
+#include "../control/motors.h"
 #include "heartbeat.h"
-#include "confirmation.h"
-#include "sequence.h"
+#include "../logic/confirmation.h"
+#include "../logic/sequence.h"
 #include <Arduino.h>
 #include <string.h>
 

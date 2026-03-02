@@ -20,7 +20,7 @@ Servo_ST3215::Servo_ST3215(int servoID1, int servoID2)
     : id1(servoID1), id2(servoID2), accel(200), 
       torqueThreshold(800), rawTruePos1(0), rawTruePos2(0),
       lastRaw1(0), lastRaw2(0), zeroOffset1(0), zeroOffset2(0), 
-      currentVelCommand(0), minLimit(-999999), maxLimit(999999), 
+      currentVelCommand(0), minLimit(-12288), maxLimit(999999), 
       reverse2(true) {}
 
 bool Servo_ST3215::begin(HardwareSerial& serialPort, int rx, int tx) {

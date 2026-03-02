@@ -4,16 +4,16 @@
 #include <WiFi.h>
 #include "esp_wifi.h"
 #include "packets.h"
-#include "robot_config.h"
-#include "robot_preferences.h"
-#include "heartbeat.h"
-#include "safety.h"
-#include "motors.h"
-#include "sensors.h"
-#include "telemetry.h"
-#include "confirmation.h"
-#include "sequence.h"
-#include "packet_handler.h"
+#include "config/robot_config.h"
+#include "config/robot_preferences.h"
+#include "comms/heartbeat.h"
+#include "control/safety.h"
+#include "control/motors.h"
+#include "sensors/sensors.h"
+#include "comms/telemetry.h"
+#include "logic/confirmation.h"
+#include "logic/sequence.h"
+#include "comms/packet_handler.h"
 
 // RTOS Objects
 SemaphoreHandle_t i2cMutex;
