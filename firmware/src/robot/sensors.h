@@ -17,6 +17,7 @@ enum SensorErrorFlags {
 
 // Initialize all hardware sensors (IMUs and INA219)
 bool initSensors();
+void waitForIMUCalibration();
 
 // System Status and Diagnostics
 uint16_t readBattery();      // Returns battery voltage in mV
@@ -64,6 +65,14 @@ void multiplyQuaternions(float w1, float x1, float y1, float z1,
  */
 void quaternionToEuler(float qw, float qx, float qy, float qz, 
                         float* roll, float* pitch, float* yaw);
+
+void printSecondaryIMUAngles();
+void tareSecondaryIMU();
+void getZeroedSecondaryIMUAngles(float* roll, float* pitch, float* yaw);
+void runGravityAlignmentCalibration();
+
+// Get the current calibration status of the secondary IMU (0 = uncalibrated, 3 = fully calibrated)
+void getSecondaryIMUCalibration(uint8_t* sys, uint8_t* gyro, uint8_t* accel, uint8_t* mag);
 
 #endif // SENSORS_H
 #endif // ROLE_ROBOT

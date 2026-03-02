@@ -2,6 +2,7 @@
 
 #include "telemetry.h"
 #include "robot_config.h"
+#include "robot_preferences.h"
 #include "safety.h"
 #include "confirmation.h"
 #include "sequence.h"
@@ -15,7 +16,7 @@ uint8_t controlPacketCount = 0;
 
 void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     AckTelemetryPacket ack{};
-    ack.robot_id = ROBOT_ID;
+    ack.robot_id = robotSettings.robot_id;
     ack.acked_type = type;
     ack.heartbeat = hb;
     
@@ -48,7 +49,7 @@ void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     ack.pend_roll = pRoll;
     ack.pend_pitch = pPitch;
 
-    esp_err_t res = esp_now_send(controllerMac, (uint8_t*)&ack, sizeof(ack));
+    esp_err_t res = esp_now_send(robotSettings.controller_mac, (uint8_t*)&ack, sizeof(ack));
     //Serial.printf("DEBUG: Telemetry sent - type=%d heartbeat=%u status=%d result=%d\n", type, hb, ack.status, res);
 }
 #endif // ROLE_ROBOT

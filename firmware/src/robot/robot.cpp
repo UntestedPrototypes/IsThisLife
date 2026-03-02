@@ -5,6 +5,7 @@
 #include "esp_wifi.h"
 #include "packets.h"
 #include "robot_config.h"
+#include "robot_preferences.h"
 #include "heartbeat.h"
 #include "safety.h"
 #include "motors.h"
@@ -13,11 +14,6 @@
 #include "confirmation.h"
 #include "sequence.h"
 #include "packet_handler.h"
-
-extern MotorChannel mainMotor;
-
-// Controller MAC Address
-uint8_t controllerMac[6] = {0xB0, 0xCB, 0xD8, 0xC1, 0x6B, 0xE0};
 
 // RTOS Objects
 SemaphoreHandle_t i2cMutex;
@@ -32,6 +28,7 @@ void controlTask(void *pvParameters);
 // -------------------- Setup --------------------
 void roleSetup() {
     Serial.begin(115200);
+    loadAllPreferences();
     Serial.println("DEBUG: Robot setup starting...");
 
     // 1. Initialize FreeRTOS Mutexes & Queues
@@ -52,7 +49,7 @@ void roleSetup() {
     esp_now_register_recv_cb(onReceive);
     
     esp_now_peer_info_t peer{};
-    memcpy(peer.peer_addr, controllerMac, 6);
+    memcpy(peer.peer_addr, robotSettings.controller_mac, 6);
     peer.channel = CHANNEL;
     peer.encrypt = false;
     esp_now_add_peer(&peer);
@@ -61,6 +58,12 @@ void roleSetup() {
     if (!initSensors()) Serial.println("DEBUG: Sensor init failed!");
     if (!initMotors()) Serial.println("DEBUG: Motor init failed!");
 
+    delay(1000); // Give the BNO055 a second to start outputting live data
+    waitForIMUCalibration(); // Block until the IMU reports it's calibrated and ready
+    Serial.print("DEBUG: Calibration complete. Put in zero-position and wait...");
+    delay(5000);
+    runGravityAlignmentCalibration();
+    
     // 4. Spawn FreeRTOS Tasks
     xTaskCreatePinnedToCore(systemTask, "SystemTask", 8192, NULL, 2, NULL, 0); // Core 0
     xTaskCreatePinnedToCore(controlTask, "ControlTask", 8192, NULL, 3, &controlTaskHandle, 1); // Core 1
@@ -122,6 +125,8 @@ void systemTask(void *pvParameters) {
         while (xQueueReceive(rxQueue, &pkt, 0) == pdTRUE) {
             processPacket(pkt.mac, pkt.data, pkt.len);
         }
+
+        printSecondaryIMUAngles();
 
         // 2. Manage State & Safety
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {

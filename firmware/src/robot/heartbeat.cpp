@@ -1,6 +1,7 @@
 #ifdef ROLE_ROBOT
 
 #include "heartbeat.h"
+#include "robot_preferences.h"
 #include <Arduino.h>
 
 // Heartbeat monitoring state
@@ -29,7 +30,7 @@ bool heartbeatValid() {
         lastValidHeartbeatTime = now;
     }
     
-    if (!isValid && (now - lastValidHeartbeatTime > HEARTBEAT_LOSS_TIMEOUT_MS)) {
+    if (!isValid && (now - lastValidHeartbeatTime > robotSettings.heartbeat_loss_timeout_ms)) {
         return false;
     }
     

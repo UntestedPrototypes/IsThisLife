@@ -2,6 +2,7 @@
 
 #include "packet_handler.h"
 #include "robot_config.h"
+#include "robot_preferences.h"
 #include "packets.h"
 #include "telemetry.h"
 #include "safety.h"
@@ -52,7 +53,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     if (pkt_type == PACKET_CONFIRM && len >= sizeof(ConfirmPacket)) {
         ConfirmPacket confirm{};
         memcpy(&confirm, data, sizeof(confirm));
-        if (confirm.robot_id == ROBOT_ID) {
+        if (confirm.robot_id == robotSettings.robot_id) {
             xSemaphoreTake(stateMutex, portMAX_DELAY);
             handleConfirmation(confirm.step_id, confirm.approved);
             xSemaphoreGive(stateMutex);
@@ -63,7 +64,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     if (pkt_type == PACKET_START_SEQUENCE && len >= sizeof(StartSequencePacket)) {
         StartSequencePacket seq{};
         memcpy(&seq, data, sizeof(seq));
-        if (seq.robot_id == ROBOT_ID) {
+        if (seq.robot_id == robotSettings.robot_id) {
             xSemaphoreTake(stateMutex, portMAX_DELAY);
             startSequence(seq.sequence_id);
             xSemaphoreGive(stateMutex);
@@ -75,7 +76,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     
     ControlPacket pkt{};
     memcpy(&pkt, data, sizeof(pkt));
-    if (pkt.robot_id != 0 && pkt.robot_id != ROBOT_ID) return;
+    if (pkt.robot_id != 0 && pkt.robot_id != robotSettings.robot_id) return;
 
     xSemaphoreTake(stateMutex, portMAX_DELAY);
     
@@ -105,7 +106,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             
         case PACKET_CONTROL:
             controlPacketCount++;
-            if (controlPacketCount >= TELEMETRY_INTERVAL) {
+            if (controlPacketCount >= robotSettings.telemetry_interval) {
                 sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
                 controlPacketCount = 0;
             }

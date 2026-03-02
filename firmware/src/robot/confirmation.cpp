@@ -2,6 +2,7 @@
 
 #include "confirmation.h"
 #include "robot_config.h"
+#include "robot_preferences.h"
 #include "safety.h"
 #include "motors.h"
 #include "packets.h"
@@ -21,13 +22,13 @@ void requestConfirmation(uint8_t step_id, const char* message) {
     
     RequestConfirmPacket req{};
     req.type = PACKET_REQUEST_CONFIRM;
-    req.robot_id = ROBOT_ID;
+    req.robot_id = robotSettings.robot_id;
     req.heartbeat = 0; // Could use a separate counter
     req.step_id = step_id;
     strncpy(req.message, message, sizeof(req.message) - 1);
     req.message[sizeof(req.message) - 1] = '\0';  // Ensure null termination
 
-    esp_err_t res = esp_now_send(controllerMac, (uint8_t*)&req, sizeof(req));
+    esp_err_t res = esp_now_send(robotSettings.controller_mac, (uint8_t*)&req, sizeof(req));
     
     if (res == ESP_OK) {
         waitingForConfirmation = true;
@@ -62,7 +63,7 @@ void handleConfirmation(uint8_t step_id, bool approved) {
 void checkConfirmationTimeout() {
     if (waitingForConfirmation) {
         uint32_t now = millis();
-        if (now - confirmRequestTime > CONFIRM_TIMEOUT_MS) {
+        if (now - confirmRequestTime > robotSettings.confirm_timeout_ms) {
             Serial.println("DEBUG: Confirmation request timed out");
             waitingForConfirmation = false;
             currentStepId = 0;

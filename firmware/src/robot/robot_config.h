@@ -9,15 +9,25 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
-// --- Robot Identification ---
-#ifndef ROBOT_ID
-    #define ROBOT_ID 1 
-#endif
+// --- Default Robot Identification ---
+#define DEFAULT_ROBOT_ID 1 
+
+// (Optional) Define a default MAC here if you want a fallback, or rely on the extern array
+#define DEFAULT_MAC_0 0xFF
+#define DEFAULT_MAC_1 0xFF
+#define DEFAULT_MAC_2 0xFF
+#define DEFAULT_MAC_3 0xFF
+#define DEFAULT_MAC_4 0xFF
+#define DEFAULT_MAC_5 0xFF
+
+// --- Default Timings ---
+#define DEFAULT_HEARTBEAT_LOSS_TIMEOUT_MS 500
+#define DEFAULT_TELEMETRY_INTERVAL 5
+#define DEFAULT_CONFIRM_TIMEOUT_MS 30000
 
 #define CHANNEL 1 
+#define LED_PIN 2
 
-// Controller MAC Address
-extern uint8_t controllerMac[6];
 
 // --- RTOS Sync Objects ---
 extern SemaphoreHandle_t i2cMutex;
@@ -29,13 +39,7 @@ extern TaskHandle_t controlTaskHandle;
 #define WINDOW_SIZE 10
 #define MIN_VALID 1
 #define WINDOW_TIME_MS 500
-#define HEARTBEAT_LOSS_TIMEOUT_MS 500
 
-// Telemetry constants
-#define TELEMETRY_INTERVAL 5
-
-// Confirmation timeout
-#define CONFIRM_TIMEOUT_MS 30000
 
 // --- PIN DEFINITIONS ---
 #define MAIN_MOTOR_PIN 27
