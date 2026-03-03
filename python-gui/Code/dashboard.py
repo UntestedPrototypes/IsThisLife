@@ -78,18 +78,41 @@ class Dashboard:
         """Shows a popup dialog for robot confirmation steps"""
         if not self.robot_state.exists(req.robot_id): return
         
+        # Debounce: Prevent spawning multiple windows if the robot spams the request
+        if not hasattr(self, 'active_dialogs'):
+            self.active_dialogs = set()
+            
+        # If a dialog is already open for this robot, ignore subsequent packets
+        if req.robot_id in self.active_dialogs:
+            return
+            
+        self.active_dialogs.add(req.robot_id)
+        
         def on_dialog_close(approved):
             packet_sender.send_confirmation(req.robot_id, req.step_id, approved)
+            if req.robot_id in self.active_dialogs:
+                self.active_dialogs.remove(req.robot_id)
             dialog.destroy()
 
         dialog = tk.Toplevel(self.root)
         dialog.title(f"Robot {req.robot_id} Request")
-        tk.Label(dialog, text=f"Robot {req.robot_id} asks:\n{req.message}", padx=20, pady=20).pack()
+        
+        # Force the window to the front and grab focus
+        dialog.attributes('-topmost', True) 
+        
+        # Ensure the lock is cleared if the user clicks the standard window 'X' button
+        dialog.protocol("WM_DELETE_WINDOW", lambda: on_dialog_close(False))
+        
+        tk.Label(dialog, text=f"Robot {req.robot_id} asks:\n{req.message}", padx=20, pady=20, font=("Arial", 11)).pack()
         
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="Approve", command=lambda: on_dialog_close(True), width=10).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Deny", command=lambda: on_dialog_close(False), width=10).pack(side=tk.LEFT, padx=5)
+        
+        # Color-coded buttons
+        tk.Button(btn_frame, text="Approve", command=lambda: on_dialog_close(True), width=10, bg="#2ecc71", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text="Deny", command=lambda: on_dialog_close(False), width=10, bg="#e74c3c", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=10)
+        
+        dialog.focus_force()
 
     def _load_config(self):
         default = {"com_port": "", "baud_rate": BAUD_RATE, "assignments": {}, "auto_reconnect": False}
