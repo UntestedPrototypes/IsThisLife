@@ -9,7 +9,7 @@
 extern uint8_t controlPacketCount;
 
 // Functions
-void sendAckTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms);
+void sendTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms);
 
 #endif // TELEMETRY_H
 #endif // ROLE_ROBOT

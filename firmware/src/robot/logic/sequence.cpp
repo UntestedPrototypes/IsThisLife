@@ -29,6 +29,10 @@ void startSequence(uint8_t sequence_id) {
     }
 }
 
+bool isSequenceActive() {
+    return sequenceActive;
+}
+
 void stopSequence() {
     if (sequenceActive) {
         Serial.println("DEBUG: Sequence canceled");
@@ -40,184 +44,60 @@ void stopSequence() {
 void runSequenceStep() {
     if (!sequenceActive) return;
     
+    // Optional elapsed time tracker (useful for other time-based sequences)
     uint32_t elapsed = millis() - sequenceStepStartTime;
     
-    // ========== SEQUENCE ROUTER ==========
-    // Add your custom sequences here!
-    
     switch(sequenceId) {
-        // ===== CALIBRATION SEQUENCES =====
-        case 0: {  // SEQUENCE_CALIBRATION_FULL
+        
+        // =========================================================
+        // SEQUENCE 0: FULL IMU OFFSET CALIBRATION
+        // =========================================================
+        case SEQUENCE_CALIBRATION_FULL: {  
             switch(currentSequenceStep) {
                 case 0:
-                    Serial.println("SEQ: Full calibration started - Initializing");
-                    sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    sequenceStepStartTime = millis();
-                    requestConfirmation(1, "Start full calibration? This will disable the robot until complete.");
+                    Serial.println("SEQ: Full IMU Calibration Started.");
+                    // Request confirmation. The sequence pauses until approved.
+                    requestConfirmation(1, "Hold robot perfectly UPRIGHT. Approve when ready.");
                     currentSequenceStep++;
                     break;
                 
                 case 1:
-                    if (waitingForConfirmation) return;
-
-                    if (elapsed > 2000) {
-                        Serial.println("SEQ: Calibrating gyro");
-                        // TODO: Add actual gyro calibration code here
-                        sequenceStepStartTime = millis();
-                        currentSequenceStep++;
-                    }
+                    if (waitingForConfirmation) return; 
+                    
+                    Serial.println("SEQ: Gathering UPRIGHT samples (approx 2 sec)...");
+                    resetOffsetAccumulator();
+                    currentSequenceStep++;
                     break;
                 
                 case 2:
-                    if (elapsed > 3000) {
-                        Serial.println("SEQ: Testing motors");
-                        // TODO: Add actual motor test code here
-                        sequenceStepStartTime = millis();
+                    // Since SystemTask runs at 50Hz, sampling 100 times takes ~2 seconds.
+                    if (accumulateOffsetSample()) {
+                        saveUprightVector();
+                        Serial.println("SEQ: Upright vector saved.");
+                        requestConfirmation(2, "Tilt robot 90-deg FORWARD (Nose to floor). Approve when ready.");
                         currentSequenceStep++;
                     }
                     break;
                 
                 case 3:
-                    if (elapsed > 2000) {
-                        Serial.println("SEQ: Full calibration complete");
-                        sequenceActive = false;
-                        currentSequenceStep = 0;
-                        sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    }
-                    break;
-            }
-            break;
-        }
-        
-        case 1: {  // SEQUENCE_CALIBRATION_GYRO
-            switch(currentSequenceStep) {
-                case 0:
-                    Serial.println("SEQ: Gyro calibration started");
-                    sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    sequenceStepStartTime = millis();
+                    if (waitingForConfirmation) return; 
+                    
+                    Serial.println("SEQ: Gathering NOSE samples (approx 2 sec)...");
+                    resetOffsetAccumulator();
                     currentSequenceStep++;
                     break;
-                
-                case 1:
-                    if (elapsed > 3000) {
-                        Serial.println("SEQ: Gyro calibration complete");
-                        // TODO: Add actual gyro calibration code here
+                    
+                case 4:
+                    if (accumulateOffsetSample()) {
+                        calculateAndSaveOffsets();
+                        
+                        // Tell the safety engine that we are fully calibrated and allowed to drive!
+                        setCalibrationRequired(false);
+                        
+                        Serial.println("SEQ: Full calibration complete! Robot Unlocked.");
                         sequenceActive = false;
                         currentSequenceStep = 0;
-                        sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    }
-                    break;
-            }
-            break;
-        }
-        
-        case 2: {  // SEQUENCE_CALIBRATION_MOTORS
-            switch(currentSequenceStep) {
-                case 0:
-                    Serial.println("SEQ: Motor test started");
-                    sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    sequenceStepStartTime = millis();
-                    currentSequenceStep++;
-                    break;
-                
-                case 1:
-                    if (elapsed > 2000) {
-                        Serial.println("SEQ: Motor test complete");
-                        // TODO: Add actual motor test code here
-                        sequenceActive = false;
-                        currentSequenceStep = 0;
-                        sendAckTelemetry(PACKET_CONTROL, 0, 0);
-                    }
-                    break;
-            }
-            break;
-        }
-        
-        // ===== DEMO SEQUENCES =====
-        case 3: {  // SEQUENCE_DEMO_DANCE
-            switch(currentSequenceStep) {
-                case 0:
-                    Serial.println("SEQ: Dance demo started - Move 1");
-                    // TODO: setMotors(50, 0, 0);  // Forward
-                    sequenceStepStartTime = millis();
-                    currentSequenceStep++;
-                    break;
-                
-                case 1:
-                    if (elapsed > 1000) {
-                        Serial.println("SEQ: Dance move 2");
-                        // TODO: setMotors(0, 50, 0);  // Strafe right
-                        sequenceStepStartTime = millis();
-                        currentSequenceStep++;
-                    }
-                    break;
-                
-                case 2:
-                    if (elapsed > 1000) {
-                        Serial.println("SEQ: Dance move 3");
-                        // TODO: setMotors(0, 0, 50);  // Spin
-                        sequenceStepStartTime = millis();
-                        currentSequenceStep++;
-                    }
-                    break;
-                
-                case 3:
-                    if (elapsed > 1000) {
-                        Serial.println("SEQ: Dance complete");
-                        stopMotors();
-                        sequenceActive = false;
-                        currentSequenceStep = 0;
-                    }
-                    break;
-            }
-            break;
-        }
-        
-        case 4: {  // SEQUENCE_SENSOR_TEST
-            switch(currentSequenceStep) {
-                case 0:
-                    Serial.println("SEQ: Sensor test started");
-                    Serial.printf("Battery: %d mV\n", readBattery());
-                    Serial.printf("Temp: %d C\n", readTemp());
-                    sequenceStepStartTime = millis();
-                    currentSequenceStep++;
-                    break;
-                
-                case 1:
-                    if (elapsed > 2000) {
-                        Serial.println("SEQ: Sensor test complete");
-                        sequenceActive = false;
-                        currentSequenceStep = 0;
-                    }
-                    break;
-            }
-            break;
-        }
-        
-        case 5: {  // SEQUENCE_PATH_FOLLOW
-            switch(currentSequenceStep) {
-                case 0:
-                    Serial.println("SEQ: Path following started - Point 1");
-                    // TODO: Navigate to waypoint 1
-                    sequenceStepStartTime = millis();
-                    currentSequenceStep++;
-                    break;
-                
-                case 1:
-                    if (elapsed > 3000) {  // Simulate reaching waypoint
-                        Serial.println("SEQ: Moving to Point 2");
-                        // TODO: Navigate to waypoint 2
-                        sequenceStepStartTime = millis();
-                        currentSequenceStep++;
-                    }
-                    break;
-                
-                case 2:
-                    if (elapsed > 3000) {
-                        Serial.println("SEQ: Path following complete");
-                        stopMotors();
-                        sequenceActive = false;
-                        currentSequenceStep = 0;
+                        sendTelemetry(PACKET_CONTROL, 0, 0); // Force UI update
                     }
                     break;
             }
@@ -232,4 +112,5 @@ void runSequenceStep() {
             break;
     }
 }
+
 #endif // ROLE_ROBOT

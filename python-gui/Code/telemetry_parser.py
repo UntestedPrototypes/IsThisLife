@@ -7,8 +7,9 @@ from collections import namedtuple
 
 # Namedtuples for clean data access in the UI
 TelemetryData = namedtuple('TelemetryData', [
-    'robot_id', 'acked_type', 'heartbeat', 'status', 
+    'type', 'robot_id', 'heartbeat', 'acked_type', 'status', 
     'battery_mv', 'motor_temp', 'error_flags', 'latency_ms',
+    'imu_calibration',
     'main_roll', 'main_pitch', 'pend_roll', 'pend_pitch'
 ])
 
@@ -17,9 +18,8 @@ ConfirmRequest = namedtuple('ConfirmRequest', [
 ])
 
 # Format Strings (Little-endian <)
-# AckTelemetryPacket: 2*uint8, 1*uint32, 1*uint8, 1*uint16, 1*int16, 1*uint8, 1*uint16, 4*float
-# B=uint8, I=uint32, H=uint16, h=int16, f=float
-BINARY_FORMAT_TELEMETRY = "<BBIBHhBHffff"
+# 14 items: type(B), id(B), heartbeat(I), ack_type(B), status(B), batt(H), temp(h), err(B), latency(H), imu_calibration(H), 4x floats(ffff)
+BINARY_FORMAT_TELEMETRY = "<BBIBBHhBHHffff" 
 PAYLOAD_SIZE_TELEMETRY = struct.calcsize(BINARY_FORMAT_TELEMETRY)
 
 # RequestConfirmPacket: 2*uint8, 1*uint32, 1*uint8, 32*char

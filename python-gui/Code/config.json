@@ -10,7 +10,8 @@
                 "vy": 50,
                 "omega": 0
             },
-            "deadzone": 5
+            "deadzone": 10
         }
-    }
+    },
+    "auto_reconnect": true
 }

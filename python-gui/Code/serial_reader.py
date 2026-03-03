@@ -19,6 +19,8 @@ class SerialReader:
         self.on_telemetry = on_telemetry
         self.on_confirmation = on_confirmation
         self.on_debug = on_debug
+
+        self.parser = telemetry_parser.TelemetryParser()
     
     def start(self):
         """Start the serial reading thread"""
@@ -43,25 +45,20 @@ class SerialReader:
                 continue
             
             try:
-                # Read available data
-                data = serial_comm.read_available()
+                # Use the new read_all() from serial_comm.py
+                data = serial_comm.read_all()
                 if data:
-                    self.rx_buffer.extend(data)
+                    # Pass the raw binary directly to the new parser
+                    packets = self.parser.process_bytes(data)
                     
-                    # Process complete lines
-                    while b"\n" in self.rx_buffer:
-                        newline_idx = self.rx_buffer.find(b"\n")
-                        line_bytes = self.rx_buffer[:newline_idx]
-                        self.rx_buffer = self.rx_buffer[newline_idx + 1:]
-                        
-                        # Decode line
-                        try:
-                            line = line_bytes.decode("utf-8", errors="replace").strip()
-                            if line:
-                                self._process_line(line)
-                        except Exception as e:
-                            if self.on_debug:
-                                self.on_debug(f"Line decode error: {e}")
+                    # Handle the parsed objects
+                    for pkt in packets:
+                        if isinstance(pkt, telemetry_parser.TelemetryData):
+                            if self.on_telemetry:
+                                self.on_telemetry(pkt)
+                        elif isinstance(pkt, telemetry_parser.ConfirmRequest):
+                            if self.on_confirmation:
+                                self.on_confirmation(pkt)
             
             except Exception as e:
                 if self.on_debug:

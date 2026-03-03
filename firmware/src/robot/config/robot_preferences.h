@@ -1,3 +1,4 @@
+#ifdef ROLE_ROBOT
 #ifndef ROBOT_PREFERENCES_H
 #define ROBOT_PREFERENCES_H
 
@@ -31,3 +32,4 @@ void saveNetworkSettings(uint8_t* mac, uint8_t id);
 void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm);
 
 #endif // ROBOT_PREFERENCES_H
+#endif // ROLE_ROBOT

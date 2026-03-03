@@ -15,6 +15,8 @@ extern uint32_t sequenceStepStartTime;
 void startSequence(uint8_t sequence_id);
 void stopSequence();
 void runSequenceStep();
+bool isSequenceActive();
+
 
 #endif // SEQUENCE_H
 #endif // ROLE_ROBOT

@@ -12,6 +12,7 @@ struct RobotTelemetry {
     uint16_t battery_mv;
     int16_t motor_temp;
     uint8_t error_flags;
+    uint16_t imu_calibration;
     
     // --- IMU Telemetry Data ---
     float main_roll;
@@ -29,6 +30,7 @@ void checkNewRobot(uint8_t robot_id);
 void updateRobotTelemetry(uint8_t robot_id, uint32_t heartbeat, 
                           uint8_t status, uint16_t battery_mv, 
                           int16_t motor_temp, uint8_t error_flags,
+                          uint16_t imu_calibration,
                           float main_roll, float main_pitch,
                           float pend_roll, float pend_pitch);
 

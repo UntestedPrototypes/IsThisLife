@@ -14,6 +14,7 @@
 #include "logic/confirmation.h"
 #include "logic/sequence.h"
 #include "comms/packet_handler.h"
+#include "io/led_manager.h"
 
 // RTOS Objects
 SemaphoreHandle_t i2cMutex;
@@ -28,7 +29,7 @@ void controlTask(void *pvParameters);
 // -------------------- Setup --------------------
 void roleSetup() {
     Serial.begin(115200);
-    pinMode(LED_PIN, OUTPUT);
+    initLed();
 
     loadAllPreferences();
     Serial.println("DEBUG: Robot setup starting...");
@@ -59,18 +60,12 @@ void roleSetup() {
     // 3. Initialize Hardware
     if (!initSensors()) Serial.println("DEBUG: Sensor init failed!");
     if (!initMotors()) Serial.println("DEBUG: Motor init failed!");
-
-    delay(1000); // Give the BNO055 a second to start outputting live data
-    waitForIMUCalibration(); // Block until the IMU reports it's calibrated and ready
-    Serial.print("DEBUG: Calibration complete. Put in zero-position and wait...");
-    delay(5000);
-    CalibrateIMUOffset();
     
     // 4. Spawn FreeRTOS Tasks
     xTaskCreatePinnedToCore(systemTask, "SystemTask", 8192, NULL, 2, NULL, 0); // Core 0
     xTaskCreatePinnedToCore(controlTask, "ControlTask", 8192, NULL, 3, &controlTaskHandle, 1); // Core 1
 
-    Serial.println("DEBUG: Setup complete. Tasks running.");
+    Serial.println("DEBUG: Setup complete. Entering CALIBRATION REQUIRED state. Tasks running.");
     delay(1000);
 }
 
@@ -105,7 +100,8 @@ void controlTask(void *pvParameters) {
 
         // 2. Safely Get Target States
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            enabled = motorsEnabled && !estopActive && !sequenceActive && !waitingForConfirmation;
+            // ADD !isCalibrationRequired() to the enable condition
+            enabled = motorsEnabled && !estopActive && !sequenceActive && !waitingForConfirmation && !isCalibrationRequired();
             xSemaphoreGive(stateMutex);
         }
 
@@ -128,10 +124,18 @@ void systemTask(void *pvParameters) {
             processPacket(pkt.mac, pkt.data, pkt.len);
         }
 
-        printIMU();
+        //printIMU();
 
         // 2. Manage State & Safety
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+
+            if (isCalibrationRequired()) {
+                if (isIMUCalibrated()) {
+                    Serial.println("DEBUG: IMUs are fully calibrated! Calibration state cleared.");
+                    setCalibrationRequired(false);
+                }
+            }
+
             bool hb_ok = heartbeatValid();
             uint8_t errors = 0;
 
@@ -154,14 +158,31 @@ void systemTask(void *pvParameters) {
                 if (controlTaskHandle != NULL) {
                     xTaskNotify(controlTaskHandle, 1, eSetBits);
                 }
-                sendAckTelemetry(PACKET_ESTOP, 0, 0); 
+                sendTelemetry(PACKET_ESTOP, 0, 0); 
             }
 
             if (sequenceActive) runSequenceStep();
             checkConfirmationTimeout();
 
+            // Set the LED mode based on priority
+            if (errors != 0) {
+                setLedMode(LED_PATTERN_3_SHORT); // E.g., 3 short flashes = Hardware Error
+            } else if (isCalibrationRequired()) {
+                setLedMode(LED_BLINK_FAST);      // Rapid blinking = Calibrating
+            } else if (waitingForConfirmation) {
+                setLedMode(LED_PATTERN_MIX);     // Mix = Waiting for user input
+            } else if (sequenceActive) {
+                setLedMode(LED_BLINK_SLOW);      // Slow pulse = Running automated task
+            } else if (estopActive) {
+                setLedMode(LED_PATTERN_3_LONG);  // E.g., 3 long flashes = E-STOP Active
+            } else {
+                setLedMode(LED_SOLID);           // Solid = Normal, armed, and ready to drive
+            }
+
             xSemaphoreGive(stateMutex);
         }
+
+        updateLed();
 
         // Run system loop at 50Hz
         vTaskDelay(pdMS_TO_TICKS(20));

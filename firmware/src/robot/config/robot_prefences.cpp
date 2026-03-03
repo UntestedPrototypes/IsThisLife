@@ -1,3 +1,4 @@
+#ifdef ROLE_ROBOT
 #include "robot_preferences.h"
 #include "robot_config.h"
 #include <Preferences.h>
@@ -98,3 +99,4 @@ void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm
 
     Serial.println("SUCCESS: Timing settings saved to NVS Flash!");
 }
+#endif // ROLE_ROBOT

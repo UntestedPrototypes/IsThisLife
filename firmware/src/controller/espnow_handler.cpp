@@ -9,13 +9,10 @@
 void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
     if (len < 1) return;
     
-    // Sniff Robot ID to detect new connections
+    // Sniff Robot ID to detect new connections    
     uint8_t detected_id = 0;
-    
-    if (data[0] == PACKET_REQUEST_CONFIRM && len >= 2) {
-        detected_id = data[1];
-    } else {
-        detected_id = data[0];
+    if (len >= 2) {
+        detected_id = data[1]; // Always the robot_id under the new PacketHeader
     }
 
     if (detected_id > 0) {
@@ -32,20 +29,22 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
         return;
     }
     
-    // Handle telemetry
-    if (len < sizeof(AckTelemetryPacket)) return;
+    if (pkt_type == PACKET_TELEMETRY) {
+        if (len < sizeof(TelemetryPacket)) return;
 
-    AckTelemetryPacket ack{};
-    memcpy(&ack, data, sizeof(ack));
+        TelemetryPacket ack{};
+        memcpy(&ack, data, sizeof(ack));
 
-    // Pass the new IMU float values to the storage array
-    updateRobotTelemetry(ack.robot_id, ack.heartbeat, ack.status, 
+        // Pass the new IMU float values to the storage array
+        updateRobotTelemetry(ack.robot_id, ack.heartbeat, ack.status, 
                         ack.battery_mv, ack.motor_temp, ack.error_flags,
+                        ack.imu_calibration,
                         ack.main_roll, ack.main_pitch, 
                         ack.pend_roll, ack.pend_pitch);
 
-    ack.latency_ms = 404; // Placeholder
+        ack.latency_ms = 404; // Placeholder
 
-    forwardTelemetryToPython(ack);
+        forwardTelemetryToPython(ack);
+    }
 }
 #endif // ROLE_CONTROLLER

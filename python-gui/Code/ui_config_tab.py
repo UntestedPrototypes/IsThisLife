@@ -8,7 +8,7 @@ from config import *
 import serial_comm
 
 class ConfigTab:
-    def __init__(self, notebook, on_connect_callback=None, initial_port=None, initial_baud=None):
+    def __init__(self, notebook, on_connect_callback=None, initial_port=None, initial_baud=None, initial_auto_reconnect=False):
         self.frame = ttk.Frame(notebook)
         self.on_connect_callback = on_connect_callback
         
@@ -20,8 +20,8 @@ class ConfigTab:
         self.baud_var = tk.StringVar(value=str(initial_baud if initial_baud else BAUD_RATE))
         self.is_connected = False
         
-        # ADD THIS LINE: State for the auto-reconnect switch (Default to False)
-        self.auto_reconnect_var = tk.BooleanVar(value=False) 
+        # Initialize the checkbox state from the loaded config
+        self.auto_reconnect_var = tk.BooleanVar(value=initial_auto_reconnect) 
         
         self._setup_ui()
         

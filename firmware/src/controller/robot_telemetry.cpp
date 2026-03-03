@@ -41,6 +41,7 @@ void checkNewRobot(uint8_t robot_id) {
 void updateRobotTelemetry(uint8_t robot_id, uint32_t heartbeat, 
                           uint8_t status, uint16_t battery_mv, 
                           int16_t motor_temp, uint8_t error_flags,
+                          uint16_t imu_calibration,
                           float main_roll, float main_pitch,
                           float pend_roll, float pend_pitch) {
     if (robot_id < 1 || robot_id > NUM_ROBOTS) return;
@@ -51,6 +52,7 @@ void updateRobotTelemetry(uint8_t robot_id, uint32_t heartbeat,
     robots[robot_id].battery_mv = battery_mv;
     robots[robot_id].motor_temp = motor_temp;
     robots[robot_id].error_flags = error_flags;
+    robots[robot_id].imu_calibration = imu_calibration;
     
     // Store IMU data
     robots[robot_id].main_roll = main_roll;

@@ -8,10 +8,10 @@
 bool python_connected = false;
 uint32_t lastPythonComm = 0;
 
-void forwardTelemetryToPython(const AckTelemetryPacket& ack) {
+void forwardTelemetryToPython(const TelemetryPacket& ack) {
     uint8_t header[2] = {0xAA, 0x55};
     Serial.write(header, 2); // Send sync bytes
-    Serial.write((uint8_t*)&ack, sizeof(AckTelemetryPacket)); // Send binary payload
+    Serial.write((uint8_t*)&ack, sizeof(TelemetryPacket)); // Send binary payload
     Serial.flush(); 
 }
 

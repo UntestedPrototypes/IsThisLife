@@ -86,7 +86,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     switch(pkt.type) {
         case PACKET_DISCOVER:
             Serial.println("DEBUG: DISCOVER received");
-            sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
+            sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP:
@@ -95,27 +95,27 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             Serial.println("DEBUG: E-STOP received");
             cancelConfirmation();
             stopSequence();
-            sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
+            sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP_CLEAR:
             Serial.println("DEBUG: E-STOP cleared / ARM received");
             clearEstop();
-            sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
+            sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_CONTROL:
+            //Serial.printf("DEBUG: CONTROL packet received - vx=%f vy=%f omega=%f\n", pkt.vx, pkt.vy, pkt.omega);
             controlPacketCount++;
             if (controlPacketCount >= robotSettings.telemetry_interval) {
-                sendAckTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
+                sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
                 controlPacketCount = 0;
             }
 
-            // Normal control update logic
-            if (!sequenceActive && !waitingForConfirmation && !estopActive && heartbeatValid()) {
+            // Normal control update logic (ADDED !isCalibrationRequired())
+            if (!isSequenceActive() && !waitingForConfirmation && !isEstopActive() && heartbeatValid() && !isCalibrationRequired()) {
                 motorsEnabled = true;
                 setTargetVelocities(pkt.vx, pkt.vy, pkt.omega);
-                //Serial.printf("DEBUG: CONTROL ACTIVE - vx=%u vy=%u omega=%u\n", pkt.vx, pkt.vy, pkt.omega);
             }
             break;
     }

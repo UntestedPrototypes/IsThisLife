@@ -20,10 +20,10 @@ DEFAULT_MAPPINGS = {
     "omega": ("none", 0),    # Unbound (Rotation disabled)
     "estop": ("button", 0),  # A Button / Cross
     "arm": ("button", 1),    # B Button / Circle
-    "autopilot": ("button", 3) # Y Button / Triangle
+    "cruise_control": ("button", 3) # Y Button / Triangle
 }
 
-AUTOPILOT_HOLD_TIME = 2.0
+CRUISE_HOLD_TIME = 1.0  # Renamed from AUTOPILOT_HOLD_TIME
 CRUISE_ADJUST_RATE = 0.02
 
 class JoystickController:
@@ -40,10 +40,10 @@ class JoystickController:
         self.mappings = DEFAULT_MAPPINGS.copy()
         
         # Internal States
-        self.autopilot_active = False
+        self.cruise_active = False
         self.cruise_speed = 0.0
-        self.autopilot_btn_start = 0
-        self.autopilot_btn_prev = False
+        self.cruise_btn_start = 0
+        self.cruise_btn_prev = False
         
         # Learning States
         self.learning_mode = None
@@ -84,32 +84,30 @@ class JoystickController:
         dz_omega = self._apply_deadzone(raw_omega, deadzone)
         
         # Autopilot Logic
-        btn_val = self.get_input_value(self.mappings["autopilot"])
+        btn_val = self.get_input_value(self.mappings["cruise_control"])
         is_pressed = (btn_val > 0.5)
         
-        if is_pressed and not self.autopilot_btn_prev:
-            if self.autopilot_active:
-                self.autopilot_active = False
+        if is_pressed and not self.cruise_btn_prev:
+            if self.cruise_active:
+                self.cruise_active = False
                 self.cruise_speed = 0.0
                 self.rumble(0.6, 0.0, 300)
             else:
-                self.autopilot_btn_start = time.time()
+                self.cruise_btn_start = time.time()
         
-        if is_pressed and self.autopilot_btn_prev:
-            if not self.autopilot_active:
-                if (time.time() - self.autopilot_btn_start) > AUTOPILOT_HOLD_TIME:
-                    self.autopilot_active = True
+        if is_pressed and self.cruise_btn_prev:
+            if not self.cruise_active:
+                if (time.time() - self.cruise_btn_start) > CRUISE_HOLD_TIME:
+                    self.cruise_active = True
                     self.cruise_speed = 0.0
-                    self.autopilot_btn_start = time.time() + 999 
+                    self.cruise_btn_start = time.time() + 999 
                     self.rumble(0.2, 0.6, 400)
         
-        self.autopilot_btn_prev = is_pressed
+        self.cruise_btn_prev = is_pressed
         
-        if self.autopilot_active:
-            # Use the deadzoned axis to adjust cruise speed
+        if self.cruise_active:
             if abs(dz_vx) > 0.0:
                 self.cruise_speed -= (dz_vx * CRUISE_ADJUST_RATE)
-            
             self.cruise_speed = max(-1.0, min(1.0, self.cruise_speed))
             
             final_vx = self.cruise_speed
@@ -124,11 +122,17 @@ class JoystickController:
             "vx": final_vx, "vy": final_vy, "omega": final_omega,
             "estop": self.get_input_value(self.mappings["estop"]),
             "arm": self.get_input_value(self.mappings["arm"]),
-            "autopilot": btn_val,
-            "autopilot_on": self.autopilot_active,
-            "autopilot_val": self.cruise_speed
+            "cruise_control": btn_val,
+            "cruise_state": "ENABLED" if self.cruise_active else "DISABLED", # New State Field
+            "cruise_val": self.cruise_speed
         }
 
+    def cancel_cruise(self):
+        """Force disables cruise control (e.g., when the robot is disarmed or E-Stopped)"""
+        self.cruise_active = False
+        self.cruise_speed = 0.0
+        self.cruise_btn_start = 0
+        
     def start_learning(self, key):
         self.learning_mode = key; self.learning_timeout = time.time() + LEARNING_TIMEOUT_SECONDS; self.learning_baseline = self._get_all_axis_values()
         return True
@@ -150,7 +154,10 @@ class JoystickController:
         except: pass
         return None
     def get_mapping_text(self, k): 
-        if k not in self.mappings: return "--"
+        # Safely return "--" if the key doesn't exist in the mappings dictionary
+        if k not in self.mappings: 
+            return "--"
+        
         m = self.mappings[k]
         if m[0] == "none": return "Unbound"
         return f"{'Axis' if m[0]=='axis' else 'Btn'} {m[1]}"

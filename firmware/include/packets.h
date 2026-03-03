@@ -8,74 +8,77 @@ enum PacketType : uint8_t {
     PACKET_ESTOP_CLEAR = 2,
     PACKET_DISCOVER = 3,
     PACKET_CONFIRM = 4,
-    PACKET_REQUEST_CONFIRM = 5,  // Robot asks for confirmation (optional)
-    PACKET_START_SEQUENCE = 6    // Python tells robot to start a sequence
+    PACKET_REQUEST_CONFIRM = 5,
+    PACKET_START_SEQUENCE = 6,
+    PACKET_TELEMETRY = 7
 };
 
-#define STATUS_OK    0
-#define STATUS_ESTOP 1
-#define STATUS_WAITING_CONFIRM 2  // Robot waiting for confirmation
-#define STATUS_RUNNING_SEQUENCE 3 // Robot is running a sequence
+// --- Bitmasks for Status Byte ---
+#define STATUS_FLAG_ESTOP 0x80 // Bit 7: 1 = E-STOP Active
+#define STATUS_STATE_MASK 0x7F // Bits 0-6: Operational State
 
-// Updated for RC Control (1000-2000us)
-struct __attribute__((packed)) ControlPacket {
-    uint8_t type;
-    uint8_t priority;
-    uint8_t robot_id;
-    uint32_t heartbeat;
-    uint16_t vx;            // Updated: 1000-2000 us (Throttle)
-    uint16_t vy;            // Updated: 1000-2000 us (Strafe/Steer)
-    uint16_t omega;         // Updated: 1000-2000 us (Rotation)
-    uint32_t timestamp_ms;  // Updated: 32-bit timestamp to avoid short wrap-around
-};
-
-struct __attribute__((packed)) AckTelemetryPacket {
-    uint8_t robot_id;
-    uint8_t acked_type;
-    uint32_t heartbeat;    // Offset 2
-    uint8_t status;       // Offset 6
-    uint16_t battery_mv;  // Offset 7
-    int16_t motor_temp;   // Offset 9
-    uint8_t error_flags;  // Offset 11
-    uint16_t latency_ms;  // Offset 12
-    
-    float main_roll;      // Offset 14
-    float main_pitch;     // Offset 18
-    float pend_roll;      // Offset 22
-    float pend_pitch;     // Offset 26
-};
-
-// Robot requests confirmation for a calibration step
-struct __attribute__((packed)) RequestConfirmPacket {
-    uint8_t type;           // PACKET_REQUEST_CONFIRM
-    uint8_t robot_id;
-    uint32_t heartbeat;
-    uint8_t step_id;        // Which calibration step (0-255)
-    char message[32];       // Description: "Calibrating gyro", "Testing motors", etc.
-};
-
-// Controller sends confirmation
-struct __attribute__((packed)) ConfirmPacket {
-    uint8_t type;           // PACKET_CONFIRM
-    uint8_t robot_id;
-    uint32_t heartbeat;
-    uint8_t step_id;        // Confirms which step
-    bool approved;          // true = proceed, false = cancel
-};
-
-// Python initiates sequence
-struct __attribute__((packed)) StartSequencePacket {
-    uint8_t type;           // PACKET_START_SEQUENCE
-    uint8_t robot_id;
-    uint32_t heartbeat;
-    uint8_t sequence_id;    // Which sequence to run (see SEQUENCE_IDs below)
-};
+// --- Operational States ---
+#define STATUS_NORMAL 0
+#define STATUS_WAITING_CONFIRM 2
+#define STATUS_RUNNING_SEQUENCE 3
+#define STATUS_CALIBRATION_REQUIRED 4
 
 // ========== Sequence ID Definitions ==========
-// Add your custom sequences here!
 #define SEQUENCE_CALIBRATION_FULL   0
 #define SEQUENCE_CALIBRATION_GYRO   1
 #define SEQUENCE_CALIBRATION_MOTORS 2
 #define SEQUENCE_DEMO_DANCE         3
 #define SEQUENCE_SENSOR_TEST        4
 #define SEQUENCE_PATH_FOLLOW        5
+
+// =================================================================
+// BASE PACKET HEADER
+// =================================================================
+// Every packet will inherently start with these 6 bytes.
+struct __attribute__((packed)) PacketHeader {
+    uint8_t type;           // PacketType enum
+    uint8_t robot_id;       // 0 = Broadcast, 1-N = Specific Robot
+    uint32_t heartbeat;     // Message counter / timestamp
+};
+
+// =================================================================
+// DERIVED PACKETS
+// =================================================================
+
+// Inherits type, robot_id, and heartbeat from PacketHeader
+struct __attribute__((packed)) ControlPacket : public PacketHeader {
+    uint8_t priority;
+    uint16_t vx;            // 1000-2000 us (Throttle)
+    uint16_t vy;            // 1000-2000 us (Strafe/Steer)
+    uint16_t omega;         // 1000-2000 us (Rotation)
+    uint32_t timestamp_ms;  
+};
+
+struct __attribute__((packed)) TelemetryPacket : public PacketHeader {
+    uint8_t acked_type;
+    uint8_t status;       
+    uint16_t battery_mv;  
+    int16_t motor_temp;   
+    uint8_t error_flags;  
+    uint16_t latency_ms;
+    uint16_t imu_calibration;
+    
+    float main_roll;      
+    float main_pitch;     
+    float pend_roll;      
+    float pend_pitch;
+};
+
+struct __attribute__((packed)) RequestConfirmPacket : public PacketHeader {
+    uint8_t step_id;        
+    char message[32];       
+};
+
+struct __attribute__((packed)) ConfirmPacket : public PacketHeader {
+    uint8_t step_id;        
+    bool approved;          
+};
+
+struct __attribute__((packed)) StartSequencePacket : public PacketHeader {
+    uint8_t sequence_id;    
+};

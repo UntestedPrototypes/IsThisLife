@@ -10,7 +10,7 @@ extern bool python_connected;
 extern uint32_t lastPythonComm;
 
 // Functions
-void forwardTelemetryToPython(const AckTelemetryPacket &ack);
+void forwardTelemetryToPython(const TelemetryPacket &ack);
 void forwardConfirmRequestToPython(const RequestConfirmPacket &req);
 void updatePythonConnection();
 bool isPythonConnected();

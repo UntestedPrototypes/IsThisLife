@@ -44,9 +44,11 @@ class GameControllerTab:
         
         # Robot Selection
         ttk.Label(sel_frame, text="Target Robot:").pack(side=tk.LEFT, padx=5)
-        self.robot_var = tk.IntVar(value=1)
-        self.robot_combo = ttk.Combobox(sel_frame, textvariable=self.robot_var, width=5); self.robot_combo['values'] = [1]; self.robot_combo.pack(side=tk.LEFT, padx=5); self.robot_combo.bind("<<ComboboxSelected>>", self._on_robot_select)
-        
+        self.robot_var = tk.StringVar() # Changed from IntVar to StringVar so it can be blank
+        self.robot_combo = ttk.Combobox(sel_frame, textvariable=self.robot_var, width=5)
+        self.robot_combo.pack(side=tk.LEFT, padx=5)
+        self.robot_combo.bind("<<ComboboxSelected>>", self._on_robot_select)
+
         # Controller Selection
         ttk.Label(sel_frame, text="Link Controller:").pack(side=tk.LEFT, padx=(20, 5))
         self.controller_combo = ttk.Combobox(sel_frame, state="readonly", width=30); self.controller_combo.pack(side=tk.LEFT, padx=5); self.controller_combo.bind("<<ComboboxSelected>>", self._on_controller_select)
@@ -58,8 +60,8 @@ class GameControllerTab:
         self.deadzone_sb.pack(side=tk.LEFT, padx=5)
 
         map_frame = ttk.Frame(edit_frame); map_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        keys = ["vx", "vy", "omega", "estop", "arm", "autopilot"]
-        labels = ["Forward/Back", "Left/Right", "Rotate", "E-STOP", "ARM/Disarm", "Auto-Pilot (Hold 2s)"]
+        keys = ["vx", "vy", "omega", "estop", "arm", "cruise_control", "cruise_state"]
+        labels = ["Forward/Back", "Left/Right", "Rotate", "E-STOP", "ARM/Disarm", "Cruise-Control Btn", "Cruise-Control State"]
         ttk.Label(map_frame, text="Function", font=("", 9, "bold")).grid(row=0, column=0, padx=5, sticky="w")
         ttk.Label(map_frame, text="Value", font=("", 9, "bold")).grid(row=0, column=1, padx=5)
         ttk.Label(map_frame, text="Mapped To", font=("", 9, "bold")).grid(row=0, column=2, padx=5)
@@ -71,7 +73,16 @@ class GameControllerTab:
             ttk.Label(map_frame, text=label).grid(row=row, column=0, padx=10, pady=8, sticky="w")
             lbl_val = ttk.Label(map_frame, text="0.00", width=8); lbl_val.grid(row=row, column=1, padx=5)
             lbl_map = ttk.Label(map_frame, text="--", width=15); lbl_map.grid(row=row, column=2, padx=5)
-            btn = ttk.Button(map_frame, text="Bind Input", command=lambda k=key: self._start_learning(k)); btn.grid(row=row, column=3, padx=5)
+            
+            btn = ttk.Button(map_frame, text="Bind Input", command=lambda k=key: self._start_learning(k))
+            
+            # Hide the bind button and mapping text for the state display
+            if key == "cruise_state":
+                lbl_map.configure(text="N/A")
+                btn.grid_remove() 
+            else:
+                btn.grid(row=row, column=3, padx=5)
+                
             sb = None
             if key in ["vx", "vy", "omega"]: sb = ttk.Spinbox(map_frame, from_=10, to=100, increment=10, width=5); sb.set(100); sb.grid(row=row, column=4, padx=5)
             self.learning_button_map[key] = {"val_label": lbl_val, "map_label": lbl_map, "btn": btn, "scale_sb": sb}
@@ -81,9 +92,8 @@ class GameControllerTab:
     def update_available_robots(self, robot_ids):
         current = self.robot_combo.get()
         assigned = list(self.assignments.keys())
-        all_ids = sorted(list(set(robot_ids + assigned + [1])))
+        all_ids = sorted(list(set(robot_ids + assigned))) # Removed hardcoded + [1]
         
-        # FIX: Only update the combo if the list actually changed to prevent focus stealing
         current_values = list(self.robot_combo['values'])
         try:
             current_values = [int(x) for x in current_values]
@@ -92,8 +102,11 @@ class GameControllerTab:
             
         if current_values != all_ids:
             self.robot_combo['values'] = all_ids
-            if not current and all_ids: 
+            if not all_ids:
+                self.robot_combo.set("")
+            elif not current or current not in [str(x) for x in all_ids]: 
                 self.robot_combo.current(0)
+                self._on_robot_select(None)
 
     def _load_initial_assignments(self, saved_data):
         default_scales = {'vx': 100, 'vy': 100, 'omega': 100}
@@ -133,7 +146,12 @@ class GameControllerTab:
 
     def _assign_controller(self):
         try:
-            r_id = self.robot_var.get()
+            r_val = self.robot_var.get()
+            if not r_val:
+                messagebox.showerror("Error", "Please enter a valid Target Robot ID")
+                return
+            r_id = int(r_val)
+            
             c_name = self.controller_combo.get()
             if not c_name and r_id in self.assignments:
                 ctrl_id = self.assignments[r_id]['id']
@@ -207,6 +225,7 @@ class GameControllerTab:
         if not ctrl: return
         success, result, timeout = ctrl.check_learning()
         for key, widgets in self.learning_button_map.items():
+            if key == "cruise_state": continue # Skip state parameter
             if str(widgets["btn"]['state']) == 'disabled':
                 if success or timeout: widgets["btn"].configure(text="Bind Input", state="normal"); 
                 if success: self._update_mapping_display()
@@ -216,7 +235,14 @@ class GameControllerTab:
         if self.selected_controller_id is None: return
         ctrl = self.manager.get_controller(self.selected_controller_id)
         if ctrl: 
-            for key, widgets in self.learning_button_map.items(): widgets["map_label"].configure(text=ctrl.get_mapping_text(key))
+            for key, widgets in self.learning_button_map.items(): 
+                if key == "cruise_state":
+                    widgets["map_label"].configure(text="N/A")
+                    continue
+                try:
+                    widgets["map_label"].configure(text=ctrl.get_mapping_text(key))
+                except Exception:
+                    widgets["map_label"].configure(text="--")
 
     def update_display_values(self):
         if self.selected_controller_id is None: return
@@ -227,11 +253,19 @@ class GameControllerTab:
             
             vals = ctrl.get_control_values(deadzone=dz)
             for key, val in vals.items():
-                if key in self.learning_button_map: self.learning_button_map[key]["val_label"].configure(text=f"{val:.2f}")
+                if key in self.learning_button_map: 
+                    # Format correctly depending on if it's a number or a state string
+                    if isinstance(val, str):
+                        self.learning_button_map[key]["val_label"].configure(text=val)
+                    else:
+                        self.learning_button_map[key]["val_label"].configure(text=f"{val:.2f}")
 
     def _on_robot_select(self, event):
         try:
-            r_id = self.robot_var.get()
+            r_val = self.robot_var.get()
+            if not r_val: return
+            r_id = int(r_val)
+            
             if r_id in self.assignments:
                 scales = self.assignments[r_id]['scales']
                 for key, val in scales.items():
@@ -256,7 +290,9 @@ class GameControllerTab:
         selected_item = self.tree.selection()
         if not selected_item: return
         try:
-            r_id = int(str(self.tree.item(selected_item)['values'][0]).replace("Robot ", "")); self.robot_var.set(r_id); self._on_robot_select(None)
+            r_id = int(str(self.tree.item(selected_item)['values'][0]).replace("Robot ", ""))
+            self.robot_var.set(str(r_id))
+            self._on_robot_select(None)
         except ValueError: pass
 
     def _update_assignment_list(self):
