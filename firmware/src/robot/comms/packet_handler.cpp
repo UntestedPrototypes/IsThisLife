@@ -3,6 +3,7 @@
 #include "packet_handler.h"
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
+#include "../utils/debug.h"
 #include "packets.h"
 #include "telemetry.h"
 #include "../control/safety.h"
@@ -85,27 +86,27 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
 
     switch(pkt.type) {
         case PACKET_DISCOVER:
-            Serial.println("DEBUG: DISCOVER received");
+            DEBUG_PKT_PRINTLN("DEBUG: DISCOVER received");
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP:
             // Hardware was already stopped by Fast Path. 
             // Gracefully cancel sequences and send the ACK.
-            Serial.println("DEBUG: E-STOP received");
+            DEBUG_PKT_PRINTLN("DEBUG: E-STOP received");
             cancelConfirmation();
             stopSequence();
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_ESTOP_CLEAR:
-            Serial.println("DEBUG: E-STOP cleared / ARM received");
+            DEBUG_PKT_PRINTLN("DEBUG: E-STOP cleared / ARM received");
             clearEstop();
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
             
         case PACKET_CONTROL:
-            //Serial.printf("DEBUG: CONTROL packet received - vx=%f vy=%f omega=%f\n", pkt.vx, pkt.vy, pkt.omega);
+            DEBUG_PKT_PRINTF("DEBUG: CONTROL packet received - vx=%f vy=%f omega=%f\n", pkt.vx, pkt.vy, pkt.omega);
             controlPacketCount++;
             if (controlPacketCount >= robotSettings.telemetry_interval) {
                 sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);

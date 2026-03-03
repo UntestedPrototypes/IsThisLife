@@ -15,6 +15,8 @@
 #include "logic/sequence.h"
 #include "comms/packet_handler.h"
 #include "io/led_manager.h"
+#include "io/serial_cli.h"
+#include "utils/debug.h"
 
 // RTOS Objects
 SemaphoreHandle_t i2cMutex;
@@ -25,6 +27,7 @@ QueueHandle_t rxQueue;
 // Task Prototypes
 void systemTask(void *pvParameters);
 void controlTask(void *pvParameters);
+void cliTask(void *pvParameters);
 
 // -------------------- Setup --------------------
 void roleSetup() {
@@ -32,7 +35,7 @@ void roleSetup() {
     initLed();
 
     loadAllPreferences();
-    Serial.println("DEBUG: Robot setup starting...");
+    Serial.println("Robot setup starting...");
 
     // 1. Initialize FreeRTOS Mutexes & Queues
     i2cMutex = xSemaphoreCreateMutex();
@@ -46,7 +49,7 @@ void roleSetup() {
     esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
 
     if (esp_now_init() != ESP_OK) {
-        Serial.println("DEBUG: Error initializing ESP-NOW");
+        Serial.println("ERROR: Initializing ESP-NOW failed");
         return;
     }
     esp_now_register_recv_cb(onReceive);
@@ -58,18 +61,24 @@ void roleSetup() {
     esp_now_add_peer(&peer);
 
     // 3. Initialize Hardware
-    if (!initSensors()) Serial.println("DEBUG: Sensor init failed!");
-    if (!initMotors()) Serial.println("DEBUG: Motor init failed!");
+    if (!initSensors()) Serial.println("ERROR: Sensor init failed!");
+    if (!initMotors()) Serial.println("ERROR: Motor init failed!");
     
     // 4. Spawn FreeRTOS Tasks
     xTaskCreatePinnedToCore(systemTask, "SystemTask", 8192, NULL, 2, NULL, 0); // Core 0
     xTaskCreatePinnedToCore(controlTask, "ControlTask", 8192, NULL, 3, &controlTaskHandle, 1); // Core 1
-
-    Serial.println("DEBUG: Setup complete. Entering CALIBRATION REQUIRED state. Tasks running.");
+    xTaskCreatePinnedToCore(cliTask, "CLITask", 4096, NULL, 1, NULL, 0);
+    DEBUG_PRINTLN("DEBUG: Setup complete. Entering CALIBRATION REQUIRED state. Tasks running.");
     delay(1000);
 }
 
 // -------------------- Tasks --------------------
+void cliTask(void *pvParameters) {
+    while(true) {
+        handleSerialCommands();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
 
 void controlTask(void *pvParameters) {
     uint32_t notificationValue;
@@ -124,14 +133,14 @@ void systemTask(void *pvParameters) {
             processPacket(pkt.mac, pkt.data, pkt.len);
         }
 
-        //printIMU();
+        printIMU();
 
         // 2. Manage State & Safety
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
 
             if (isCalibrationRequired()) {
                 if (isIMUCalibrated()) {
-                    Serial.println("DEBUG: IMUs are fully calibrated! Calibration state cleared.");
+                    DEBUG_PRINTLN("DEBUG: IMUs are fully calibrated! Calibration state cleared.");
                     setCalibrationRequired(false);
                 }
             }
@@ -147,7 +156,7 @@ void systemTask(void *pvParameters) {
 
             if ((errors != 0 || !hb_ok) && !estopActive) {
                 if (errors != 0) Serial.printf("CRITICAL ERROR: 0x%02X\n", errors);
-                if (!hb_ok) Serial.println("DEBUG: E-STOP triggered due to lost heartbeat");
+                if (!hb_ok) DEBUG_PRINTLN("DEBUG: E-STOP triggered due to lost heartbeat");
                 
                 estopActive = true;
                 motorsEnabled = false;

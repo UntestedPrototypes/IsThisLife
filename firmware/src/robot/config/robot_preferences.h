@@ -30,6 +30,6 @@ void saveIMUOffsets(float qw, float qx, float qy, float qz);
 // New save functions
 void saveNetworkSettings(uint8_t* mac, uint8_t id);
 void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm);
-
+void saveDebugSettings(bool gen, bool imu, bool pkt);
 #endif // ROBOT_PREFERENCES_H
 #endif // ROLE_ROBOT

@@ -1,6 +1,7 @@
 #ifdef ROLE_ROBOT
 #include "robot_preferences.h"
 #include "robot_config.h"
+#include "../utils/debug.h"
 #include <Preferences.h>
 
 RobotSettings robotSettings;
@@ -10,7 +11,7 @@ const char* PREF_NAMESPACE = "robot_mem";
 
 void loadAllPreferences() {
     Serial.println("Loading saved preferences from Flash...");
-    prefs.begin(PREF_NAMESPACE, true); 
+    prefs.begin(PREF_NAMESPACE, true);
 
     // --- Load IMU (Default to perfect 90-degree math) ---
     robotSettings.imu_off_w = prefs.getFloat("imu_w", 0.7071f);
@@ -43,6 +44,11 @@ void loadAllPreferences() {
     robotSettings.telemetry_interval = prefs.getUInt("tlm_int", DEFAULT_TELEMETRY_INTERVAL);
     robotSettings.confirm_timeout_ms = prefs.getUInt("cnf_timeout", DEFAULT_CONFIRM_TIMEOUT_MS);
 
+    // --- Load Debug Settings (Default to OFF for safety) ---
+    dbg_general = prefs.getBool("dbg_gen", true);
+    dbg_imu     = prefs.getBool("dbg_imu", false);
+    dbg_packets = prefs.getBool("dbg_pkt", false);
+
     prefs.end(); 
 
     // Debug Print
@@ -54,6 +60,8 @@ void loadAllPreferences() {
     Serial.printf("  -> HB Timeout: %u ms\n", robotSettings.heartbeat_loss_timeout_ms);
     Serial.printf("  -> TLM Interval: %u ms\n", robotSettings.telemetry_interval);
     Serial.printf("  -> CNF Timeout: %u ms\n", robotSettings.confirm_timeout_ms);
+    Serial.printf("  -> Debug Settings - Gen: %s | IMU: %s | Pkt: %s\n", 
+                  dbg_general ? "ON" : "OFF", dbg_imu ? "ON" : "OFF", dbg_packets ? "ON" : "OFF");
 }
 
 void saveIMUOffsets(float qw, float qx, float qy, float qz) {
@@ -98,5 +106,30 @@ void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm
     robotSettings.confirm_timeout_ms = confirm;
 
     Serial.println("SUCCESS: Timing settings saved to NVS Flash!");
+}
+
+void saveDebugSettings(bool gen, bool imu, bool pkt) {
+    // The second argument MUST be 'false' to allow Write access!
+    prefs.begin(PREF_NAMESPACE, false); 
+    
+    // putBool returns the number of bytes written (should be > 0)
+    size_t w1 = prefs.putBool("dbg_gen", gen);
+    size_t w2 = prefs.putBool("dbg_imu", imu);
+    size_t w3 = prefs.putBool("dbg_pkt", pkt);
+    
+    prefs.end();
+
+    // Update the live global variables
+    dbg_general = gen;
+    dbg_imu = imu;
+    dbg_packets = pkt;
+
+    // Verify the write succeeded
+    if (w1 == 0 || w2 == 0 || w3 == 0) {
+        Serial.println("CRITICAL ERROR: Failed to write to NVS Flash! Memory might be corrupted or full.");
+    } else {
+        Serial.printf("SUCCESS: Debug settings saved! Gen:%s | IMU:%s | Pkt:%s\n", 
+                      gen ? "ON" : "OFF", imu ? "ON" : "OFF", pkt ? "ON" : "OFF");
+    }
 }
 #endif // ROLE_ROBOT

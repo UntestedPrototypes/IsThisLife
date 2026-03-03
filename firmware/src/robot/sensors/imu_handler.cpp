@@ -3,6 +3,7 @@
 #include "imu_handler.h"
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
+#include "../utils/debug.h"
 #include "../math/quaternion_math.h"
 #include "sensors.h" // For sensorsReady
 #include <Adafruit_BNO055.h>
@@ -112,7 +113,7 @@ void calculateAndSaveOffsets() {
     qw /= mag; qx /= mag; qy /= mag; qz /= mag;
 
     saveIMUOffsets(qw, qx, qy, qz);
-    Serial.println("\n--- IMU CALIBRATION SUCCESSFUL & SAVED TO FLASH ---");
+    DEBUG_PRINTLN("\n--- IMU CALIBRATION SUCCESSFUL & SAVED TO FLASH ---");
 }
 
 void readMainIMU(float* roll, float* pitch, float* yaw) {
@@ -160,7 +161,7 @@ void printIMU() {
     readMainIMU(&mRoll, &mPitch, &mYaw);
     readSecondaryIMU(&sRoll, &sPitch, &sYaw);
 
-    Serial.printf("Main [R:%6.2f P:%6.2f Y:%6.2f] Cal(G:%u A:%u M:%u) | Sec [R:%6.2f P:%6.2f Y:%6.2f] Cal(G:%u A:%u M:%u)\n", 
+    DEBUG_IMU_PRINTF("Main [R:%6.2f P:%6.2f Y:%6.2f] Cal(G:%u A:%u M:%u) | Sec [R:%6.2f P:%6.2f Y:%6.2f] Cal(G:%u A:%u M:%u)\n", 
                   mRoll, mPitch, mYaw, mg, ma, mm, sRoll, sPitch, sYaw, sg, sa, sm);
 }
 

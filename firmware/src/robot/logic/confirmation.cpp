@@ -3,6 +3,7 @@
 #include "confirmation.h"
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
+#include "../utils/debug.h"
 #include "../control/safety.h"
 #include "../control/motors.h"
 #include "packets.h"
@@ -16,7 +17,7 @@ uint32_t confirmRequestTime = 0;
 
 void requestConfirmation(uint8_t step_id, const char* message) {
     if (waitingForConfirmation) {
-        Serial.println("DEBUG: Already waiting for confirmation, ignoring new request");
+        DEBUG_PRINTLN("DEBUG: Already waiting for confirmation, ignoring new request");
         return;
     }
     
@@ -36,9 +37,9 @@ void requestConfirmation(uint8_t step_id, const char* message) {
         confirmRequestTime = millis();
         motorsEnabled = false;  // Disable motors while waiting
         stopMotors();
-        Serial.printf("DEBUG: Requested confirmation for step %d: %s\n", step_id, message);
+        DEBUG_PRINTF("DEBUG: Requested confirmation for step %d: %s\n", step_id, message);
     } else {
-        Serial.printf("DEBUG: Failed to send confirmation request, error=%d\n", res);
+        DEBUG_PRINTF("DEBUG: Failed to send confirmation request, error=%d\n", res);
     }
 }
 
@@ -47,13 +48,13 @@ void handleConfirmation(uint8_t step_id, bool approved) {
         return;
     }
     
-    Serial.printf("DEBUG: Received confirmation for step %d, approved=%d\n", step_id, approved);
+    DEBUG_PRINTF("DEBUG: Received confirmation for step %d, approved=%d\n", step_id, approved);
     
     if (approved) {
-        Serial.printf("DEBUG: Step %d approved, proceeding...\n", currentStepId);
+        DEBUG_PRINTF("DEBUG: Step %d approved, proceeding...\n", currentStepId);
         // TODO: Add your actual calibration logic here based on currentStepId
     } else {
-        Serial.printf("DEBUG: Step %d denied, canceling\n", currentStepId);
+        DEBUG_PRINTF("DEBUG: Step %d denied, canceling\n", currentStepId);
     }
     
     waitingForConfirmation = false;
@@ -64,7 +65,7 @@ void checkConfirmationTimeout() {
     if (waitingForConfirmation) {
         uint32_t now = millis();
         if (now - confirmRequestTime > robotSettings.confirm_timeout_ms) {
-            Serial.println("DEBUG: Confirmation request timed out");
+            DEBUG_PRINTLN("DEBUG: Confirmation request timed out");
             waitingForConfirmation = false;
             currentStepId = 0;
         }
@@ -73,7 +74,7 @@ void checkConfirmationTimeout() {
 
 void cancelConfirmation() {
     if (waitingForConfirmation) {
-        Serial.println("DEBUG: Pending confirmation canceled");
+        DEBUG_PRINTLN("DEBUG: Pending confirmation canceled");
         waitingForConfirmation = false;
         currentStepId = 0;
     }

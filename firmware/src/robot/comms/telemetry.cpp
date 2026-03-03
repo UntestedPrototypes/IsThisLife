@@ -3,6 +3,7 @@
 #include "telemetry.h"
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
+#include "../utils/debug.h"
 #include "../control/safety.h"
 #include "../logic/confirmation.h"
 #include "../logic/sequence.h"
@@ -79,7 +80,7 @@ void sendTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
 
     esp_err_t res = esp_now_send(robotSettings.controller_mac, (uint8_t*)&Tele, sizeof(Tele));
     
-    Serial.printf("Sent Telemetry: Type=%d, Status=0x%02X, Battery=%dmV, MotorTemp=%dC, Errors=0x%02X, Latency=%dms, IMU=[%.2f, %.2f, %.2f], Secondary IMU=[%.2f, %.2f, %.2f], ESP_NOW Result=%d\n",
+    DEBUG_PKT_PRINTF("Sent Telemetry: Type=%d, Status=0x%02X, Battery=%dmV, MotorTemp=%dC, Errors=0x%02X, Latency=%dms, IMU=[%.2f, %.2f, %.2f], Secondary IMU=[%.2f, %.2f, %.2f], ESP_NOW Result=%d\n",
         Tele.acked_type,
         Tele.status,
         Tele.battery_mv,

@@ -6,6 +6,7 @@
 #include "../control/motors.h"
 #include "../sensors/sensors.h"
 #include "../control/safety.h"
+#include "../utils/debug.h"
 #include "packets.h"
 #include <Arduino.h>
 
@@ -17,7 +18,7 @@ uint32_t sequenceStepStartTime = 0;
 
 void startSequence(uint8_t sequence_id) {
     if (!isEstopActive()) {
-        Serial.printf("DEBUG: Starting sequence ID %d\n", sequence_id);
+        DEBUG_PRINTF("DEBUG: Starting sequence ID %d\n", sequence_id);
         sequenceActive = true;
         sequenceId = sequence_id;
         currentSequenceStep = 0;
@@ -25,7 +26,7 @@ void startSequence(uint8_t sequence_id) {
         motorsEnabled = false;  // Disable motors during sequence
         stopMotors();
     } else {
-        Serial.println("DEBUG: Cannot start sequence - E-STOP active");
+        DEBUG_PRINTLN("DEBUG: Cannot start sequence - E-STOP active");
     }
 }
 
@@ -35,7 +36,7 @@ bool isSequenceActive() {
 
 void stopSequence() {
     if (sequenceActive) {
-        Serial.println("DEBUG: Sequence canceled");
+        DEBUG_PRINTLN("DEBUG: Sequence canceled");
         sequenceActive = false;
         currentSequenceStep = 0;
     }
@@ -55,7 +56,7 @@ void runSequenceStep() {
         case SEQUENCE_CALIBRATION_FULL: {  
             switch(currentSequenceStep) {
                 case 0:
-                    Serial.println("SEQ: Full IMU Calibration Started.");
+                    DEBUG_PRINTLN("SEQ: Full IMU Calibration Started.");
                     // Request confirmation. The sequence pauses until approved.
                     requestConfirmation(1, "Hold robot perfectly UPRIGHT. Approve when ready.");
                     currentSequenceStep++;
@@ -64,7 +65,7 @@ void runSequenceStep() {
                 case 1:
                     if (waitingForConfirmation) return; 
                     
-                    Serial.println("SEQ: Gathering UPRIGHT samples (approx 2 sec)...");
+                    DEBUG_PRINTLN("SEQ: Gathering UPRIGHT samples (approx 2 sec)...");
                     resetOffsetAccumulator();
                     currentSequenceStep++;
                     break;
@@ -73,7 +74,7 @@ void runSequenceStep() {
                     // Since SystemTask runs at 50Hz, sampling 100 times takes ~2 seconds.
                     if (accumulateOffsetSample()) {
                         saveUprightVector();
-                        Serial.println("SEQ: Upright vector saved.");
+                        DEBUG_PRINTLN("SEQ: Upright vector saved.");
                         requestConfirmation(2, "Tilt robot 90-deg FORWARD (Nose to floor). Approve when ready.");
                         currentSequenceStep++;
                     }
@@ -82,7 +83,7 @@ void runSequenceStep() {
                 case 3:
                     if (waitingForConfirmation) return; 
                     
-                    Serial.println("SEQ: Gathering NOSE samples (approx 2 sec)...");
+                    DEBUG_PRINTLN("SEQ: Gathering NOSE samples (approx 2 sec)...");
                     resetOffsetAccumulator();
                     currentSequenceStep++;
                     break;
@@ -94,7 +95,7 @@ void runSequenceStep() {
                         // Tell the safety engine that we are fully calibrated and allowed to drive!
                         setCalibrationRequired(false);
                         
-                        Serial.println("SEQ: Full calibration complete! Robot Unlocked.");
+                        DEBUG_PRINTLN("SEQ: Full calibration complete! Robot Unlocked.");
                         sequenceActive = false;
                         currentSequenceStep = 0;
                         sendTelemetry(PACKET_CONTROL, 0, 0); // Force UI update
@@ -106,7 +107,7 @@ void runSequenceStep() {
         
         // ===== ADD YOUR CUSTOM SEQUENCES HERE =====
         default:
-            Serial.printf("SEQ: Unknown sequence ID %d\n", sequenceId);
+            DEBUG_PRINTF("SEQ: Unknown sequence ID %d\n", sequenceId);
             sequenceActive = false;
             currentSequenceStep = 0;
             break;
