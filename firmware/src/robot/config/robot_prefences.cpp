@@ -44,6 +44,10 @@ void loadAllPreferences() {
     robotSettings.telemetry_interval = prefs.getUInt("tlm_int", DEFAULT_TELEMETRY_INTERVAL);
     robotSettings.confirm_timeout_ms = prefs.getUInt("cnf_timeout", DEFAULT_CONFIRM_TIMEOUT_MS);
 
+    // --- Load Encoder Limits ---
+    robotSettings.encoder_limit_min = prefs.getInt("enc_min", -12288);
+    robotSettings.encoder_limit_max = prefs.getInt("enc_max", 12288);
+
     // --- Load Debug Settings (Default to OFF for safety) ---
     dbg_general = prefs.getBool("dbg_gen", true);
     dbg_imu     = prefs.getBool("dbg_imu", false);
@@ -60,6 +64,7 @@ void loadAllPreferences() {
     Serial.printf("  -> HB Timeout: %u ms\n", robotSettings.heartbeat_loss_timeout_ms);
     Serial.printf("  -> TLM Interval: %u ms\n", robotSettings.telemetry_interval);
     Serial.printf("  -> CNF Timeout: %u ms\n", robotSettings.confirm_timeout_ms);
+    Serial.printf("  -> Encoder Limits: [%d, %d]\n", robotSettings.encoder_limit_min, robotSettings.encoder_limit_max);
     Serial.printf("  -> Debug Settings - Gen: %s | IMU: %s | Pkt: %s\n", 
                   dbg_general ? "ON" : "OFF", dbg_imu ? "ON" : "OFF", dbg_packets ? "ON" : "OFF");
 }
@@ -131,5 +136,18 @@ void saveDebugSettings(bool gen, bool imu, bool pkt) {
         Serial.printf("SUCCESS: Debug settings saved! Gen:%s | IMU:%s | Pkt:%s\n", 
                       gen ? "ON" : "OFF", imu ? "ON" : "OFF", pkt ? "ON" : "OFF");
     }
+}
+
+void saveEncoderLimits(int32_t min_limit, int32_t max_limit) {
+    prefs.begin(PREF_NAMESPACE, false); 
+    prefs.putInt("enc_min", min_limit);
+    prefs.putInt("enc_max", max_limit);
+    prefs.end();
+
+    // Update live variables
+    robotSettings.encoder_limit_min = min_limit;
+    robotSettings.encoder_limit_max = max_limit;
+
+    Serial.println("SUCCESS: Encoder limits saved to NVS Flash!");
 }
 #endif // ROLE_ROBOT

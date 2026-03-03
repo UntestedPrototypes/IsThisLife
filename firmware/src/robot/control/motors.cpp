@@ -2,6 +2,7 @@
 
 #include "motors.h"
 #include "../config/robot_config.h"
+#include "../config/robot_preferences.h"
 #include "Servo_ST3215.h"
 #include <Arduino.h>
 
@@ -26,7 +27,8 @@ bool initMotors() {
         Serial.println("ERROR: Failed to init ST3215 Servos!");
         return false;
     } else {
-        pendServos.setOuterLimits(-12288, 12288); // set limits to +/- 3 full rotations (4096 units per rotation)
+        // --- MODIFIED: Use the preferences instead of hardcoded numbers ---
+        pendServos.setOuterLimits(robotSettings.encoder_limit_min, robotSettings.encoder_limit_max); 
         pendServos.enableMotors();
     }
     return true;

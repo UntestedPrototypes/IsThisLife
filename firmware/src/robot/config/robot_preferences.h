@@ -11,14 +11,17 @@ struct RobotSettings {
     float imu_off_y;
     float imu_off_z;
 
-    // --- NEW: Identification & Connectivity ---
+    // --- Identification & Connectivity ---
     uint8_t controller_mac[6];
     uint8_t robot_id;
 
-    // --- NEW: Timings & Intervals ---
+    // --- Timings & Intervals ---
     uint32_t heartbeat_loss_timeout_ms;
     uint32_t telemetry_interval; 
     uint32_t confirm_timeout_ms;
+
+    int32_t encoder_limit_min;
+    int32_t encoder_limit_max;
 };
 
 extern RobotSettings robotSettings;
@@ -31,5 +34,7 @@ void saveIMUOffsets(float qw, float qx, float qy, float qz);
 void saveNetworkSettings(uint8_t* mac, uint8_t id);
 void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm);
 void saveDebugSettings(bool gen, bool imu, bool pkt);
+void saveEncoderLimits(int32_t min_limit, int32_t max_limit);
+
 #endif // ROBOT_PREFERENCES_H
 #endif // ROLE_ROBOT

@@ -44,6 +44,8 @@ void handleSerialCommands() {
         Serial.printf("Heartbeat Timeout: %u ms\n", robotSettings.heartbeat_loss_timeout_ms);
         Serial.printf("Telemetry Interval: %u pkts\n", robotSettings.telemetry_interval);
         Serial.printf("Confirm Timeout: %u ms\n", robotSettings.confirm_timeout_ms);
+        Serial.printf("Encoder Limits: [%d, %d]\n", 
+            robotSettings.encoder_limit_min, robotSettings.encoder_limit_max);
         Serial.printf("IMU Offsets (W,X,Y,Z): %.4f, %.4f, %.4f, %.4f\n",
             robotSettings.imu_off_w, robotSettings.imu_off_x, 
             robotSettings.imu_off_y, robotSettings.imu_off_z);
@@ -60,6 +62,7 @@ void handleSerialCommands() {
         Serial.println("  SET_HB <ms>         - Set Heartbeat timeout");
         Serial.println("  SET_TLM <pkts>      - Set Telemetry interval");
         Serial.println("  SET_CNF <ms>        - Set Confirm timeout");
+        Serial.println("  SET_ENC <min> <max> - Set Encoder limits (e.g. SET_ENC -12288 12288)");
         Serial.println("  SET_DBG_GEN <ON/OFF>- Toggle general debug messages");
         Serial.println("  SET_DBG_IMU <ON/OFF>- Toggle high-frequency IMU stream");
         Serial.println("  SET_DBG_PKT <ON/OFF>- Toggle incoming packet stream");
@@ -92,6 +95,14 @@ void handleSerialCommands() {
     else if (cmd == "SET_CNF") {
         uint32_t val = args.toInt();
         saveTimingSettings(robotSettings.heartbeat_loss_timeout_ms, robotSettings.telemetry_interval, val);
+    }
+    else if (cmd == "SET_ENC") {
+        int32_t min_val = 0, max_val = 0;
+        if (sscanf(args.c_str(), "%d %d", &min_val, &max_val) == 2) {
+            saveEncoderLimits(min_val, max_val);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_ENC <min> <max>");
+        }
     }
     else if (cmd == "SET_DBG_GEN") {
         bool state = (args == "ON");
