@@ -21,6 +21,19 @@ static bool pid_first_run = true;
 // --- Private Helper Prototypes ---
 float calculateAxisPID(float error, float& integral, float& prev_error, float kp, float ki, float kd, float dt, float dir, bool first_run);
 
+float applyRollSafety(float output, float currentRoll, float dir) {
+    // Translate the raw motor command back into the IMU's physical coordinate space
+    float intended_roll_direction = output * dir;
+
+    if (currentRoll > 45.0f && intended_roll_direction > 0.0f) {
+        return 0.0f; // Block further positive tilt
+    }
+    if (currentRoll < -45.0f && intended_roll_direction < 0.0f) {
+        return 0.0f; // Block further negative tilt
+    }
+    return output; // Allow movement
+}
+
 // --- Public Interface ---
 void setControlMode(uint8_t mode) {
     current_control_mode = mode;
@@ -29,6 +42,7 @@ void setControlMode(uint8_t mode) {
 
 uint8_t getControlMode() { return current_control_mode; }
 
+// backward Compatiblity for other code, should be updated once PID is locked down
 void setTargetVelocities(uint16_t vx, uint16_t vy, uint16_t omega) {
     target_vx = vx; target_vy = vy; target_omega = omega;
 }
@@ -78,6 +92,9 @@ void updateStabilizer() {
                                      robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, dt, robotSettings.roll_dir, pid_first_run);
 
         pid_first_run = false; // Mark that we've completed our safe startup
+
+        outY = applyRollSafety(outY, mRoll, robotSettings.roll_dir);
+        
         // Apply outputs directly to motors
         setMotorSpeed(outX, outY);
 
@@ -114,7 +131,7 @@ float calculateAxisPID(float error, float& integral, float& prev_error, float kp
     // 5. Apply direction modifier and hard clamp the output
     output *= dir;
     if (output > 1.0f) output = 1.0f;
-    if (output < -1.0f) output = 1.0f;
+    if (output < -1.0f) output = -1.0f;
     
     return output;
 }

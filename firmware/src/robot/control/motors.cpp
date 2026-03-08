@@ -34,16 +34,6 @@ bool initMotors() {
 void setEncoderLimits(int32_t min_limit, int32_t max_limit) {
     // 1. Update the hardware object limits
     pendServos.setOuterLimits(min_limit, max_limit);
-
-    // 2. Sync the global settings structure
-    robotSettings.encoder_limit_min = min_limit;
-    robotSettings.encoder_limit_max = max_limit;
-
-    // 3. Persist the new limits to NVS Flash memory
-    saveEncoderLimits(min_limit, max_limit);
-    
-    DEBUG_PRINTF("DEBUG: Encoder limits updated to [%d, %d] and saved to Flash.\n", 
-                  min_limit, max_limit);
 }
 
 void setMotorSpeed(float target_normVx, float target_normVy) {

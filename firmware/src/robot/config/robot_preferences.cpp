@@ -2,6 +2,7 @@
 #include "robot_preferences.h"
 #include "robot_config.h"
 #include "../utils/debug.h"
+#include "../control/motors.h"
 #include <Preferences.h>
 
 RobotSettings robotSettings;
@@ -100,7 +101,16 @@ void saveDebugSettings(bool gen, bool imu, bool pkt_rx, bool pkt_tx) {
     }
 }
 
-void saveEncoderLimits(int32_t min_limit, int32_t max_limit) { /* unchanged */ }
+void saveEncoderLimits(int32_t min_limit, int32_t max_limit) {
+    prefs.begin(PREF_NAMESPACE, false);
+    prefs.putInt("enc_min", min_limit);
+    prefs.putInt("enc_max", max_limit);
+    prefs.end();
+
+    robotSettings.encoder_limit_min = min_limit;
+    robotSettings.encoder_limit_max = max_limit;
+    setEncoderLimits(min_limit, max_limit);
+}
 
 void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float pdir, float rdir) {
     prefs.begin(PREF_NAMESPACE, false);

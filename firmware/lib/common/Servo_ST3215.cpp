@@ -17,10 +17,10 @@ void servoUpdateTask(void* parameter) {
 }
 
 Servo_ST3215::Servo_ST3215(int servoID1, int servoID2) 
-    : id1(servoID1), id2(servoID2), accel(200), 
+    : id1(servoID1), id2(servoID2), accel(254), 
       torqueThreshold(800), rawTruePos1(0), rawTruePos2(0),
       lastRaw1(0), lastRaw2(0), zeroOffset1(0), zeroOffset2(0), 
-      currentVelCommand(0), minLimit(-12288), maxLimit(999999), 
+      currentVelCommand(0), minLimit(-8192), maxLimit(8912), 
       reverse2(true) {}
 
 bool Servo_ST3215::begin(HardwareSerial& serialPort, int rx, int tx) {
@@ -115,68 +115,60 @@ void Servo_ST3215::update() {
     if (st.FeedBack(id1) != -1) trackWraps(1, st.ReadPos(-1));
     if (st.FeedBack(id2) != -1) trackWraps(2, st.ReadPos(-1));
 
-    // 2. Deceleration and Hard Stop (STEPPED - only write when factor changes significantly)
-    if (currentVelCommand != 0) {
-        long Pos1 = getPosition(id1);
-        float speedFactor = 1.0;
+    // Static variables to remember the last sent speed (prevents bus flooding)
+    static int last_s1 = 0;
+    static int last_s2 = 0;
 
-        // --- A. Deceleration logic for overshooting ---
-        if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
-            speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
+    // If no movement is commanded, ensure motors are stopped and exit
+    if (currentVelCommand == 0) {
+        if (last_s1 != 0 || last_s2 != 0) {
+            st.WriteSpe(id1, 0, (u8)accel);
+            st.WriteSpe(id2, 0, (u8)accel);
+            last_s1 = 0; 
+            last_s2 = 0;
         }
-        else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
-            speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
-        }
-
-        // --- B. Only write if speedFactor changed significantly (or is zero) ---
-        static float lastSpeedFactor = 1.0;
-        const float FACTOR_THRESHOLD = 0.1;  // Only write if difference >= 10%
-        
-        if (speedFactor <= 0 || abs(speedFactor - lastSpeedFactor) >= FACTOR_THRESHOLD) {
-            int baseSpeed = (int)(currentVelCommand * speedFactor);
-            int s1 = baseSpeed;
-            int s2 = (reverse2 ? -baseSpeed : baseSpeed);
-            st.WriteSpe(id1, (s16)s1, (u8)accel);
-            st.WriteSpe(id2, (s16)s2, (u8)accel);
-            lastSpeedFactor = speedFactor;
-            
-            if (speedFactor <= 0) {
-                currentVelCommand = 0;
-                Serial.println("Target limit reached. Motors halted.");
-                return;
-            }
-        }
+        return;
     }
 
-    // 3. Sync Correction and Motor Commands
-    if (currentVelCommand != 0) {
-        long Pos1 = getPosition(id1);
-        long pos2 = getPosition(id2);
-        float speedFactor = 1.0;
+    long Pos1 = getPosition(id1);
+    long pos2 = getPosition(id2);
+    float speedFactor = 1.0;
 
-        // Recalculate speedFactor for sync logic
-        if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
-            speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
-        }
-        else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
-            speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
-        }
+    // 2. Deceleration logic near limits
+    if (currentVelCommand > 0 && Pos1 > (maxLimit - slowdownThreshold)) {
+        speedFactor = (float)(maxLimit - Pos1) / slowdownThreshold;
+    }
+    else if (currentVelCommand < 0 && Pos1 < (minLimit + slowdownThreshold)) {
+        speedFactor = (float)(Pos1 - minLimit) / slowdownThreshold;
+    }
 
-        // --- C. Sync Correction Logic ---
-        long drift = Pos1 - pos2;
-        int syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
+    // Hard Stop Check
+    if (speedFactor <= 0) {
+        currentVelCommand = 0;
+        st.WriteSpe(id1, 0, (u8)accel);
+        st.WriteSpe(id2, 0, (u8)accel);
+        last_s1 = 0; 
+        last_s2 = 0;
+        Serial.println("Target limit reached. Motors halted.");
+        return;
+    }
 
-        // --- D. Calculate Final Speeds ---
-        int baseSpeed = (int)(currentVelCommand * speedFactor);
-        
-        // Apply sync correction
-        int s1 = baseSpeed - syncCorrection;
-        int s2_val = baseSpeed + syncCorrection;
-        int s2 = reverse2 ? -s2_val : s2_val;
+    // 3. Sync Correction Logic
+    long drift = Pos1 - pos2;
+    int syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
 
-        // --- E. Send Commands ---
+    // 4. Calculate Final Speeds
+    int baseSpeed = (int)(currentVelCommand * speedFactor);
+    int s1 = baseSpeed - syncCorrection;
+    int s2_val = baseSpeed + syncCorrection;
+    int s2 = reverse2 ? -s2_val : s2_val;
+
+    // 5. Send Commands (Only if the calculated speed has changed)
+    if (s1 != last_s1 || s2 != last_s2) {
         st.WriteSpe(id1, (s16)s1, (u8)accel);
         st.WriteSpe(id2, (s16)s2, (u8)accel);
+        last_s1 = s1;
+        last_s2 = s2;
     }
 }
 
