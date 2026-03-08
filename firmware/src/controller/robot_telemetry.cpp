@@ -11,6 +11,7 @@ void initTelemetry() {
         robots[i].robot_id = i;
         robots[i].last_seen = 0;
         robots[i].status = 0;
+        robots[i].mode = 0;
         robots[i].battery_mv = 0;
         robots[i].motor_temp = 0;
         robots[i].error_flags = 0;
@@ -39,7 +40,7 @@ void checkNewRobot(uint8_t robot_id) {
 
 // Updated to receive and store IMU data
 void updateRobotTelemetry(uint8_t robot_id, uint32_t heartbeat, 
-                          uint8_t status, uint16_t battery_mv, 
+                          uint8_t status, uint8_t mode, uint16_t battery_mv, 
                           int16_t motor_temp, uint8_t error_flags,
                           uint16_t imu_calibration,
                           float main_roll, float main_pitch,
@@ -49,6 +50,7 @@ void updateRobotTelemetry(uint8_t robot_id, uint32_t heartbeat,
     robots[robot_id].last_seen = millis();
     
     robots[robot_id].status = status;
+    robots[robot_id].mode = mode;
     robots[robot_id].battery_mv = battery_mv;
     robots[robot_id].motor_temp = motor_temp;
     robots[robot_id].error_flags = error_flags;

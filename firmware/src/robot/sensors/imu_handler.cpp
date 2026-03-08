@@ -116,40 +116,52 @@ void calculateAndSaveOffsets() {
     DEBUG_PRINTLN("\n--- IMU CALIBRATION SUCCESSFUL & SAVED TO FLASH ---");
 }
 
-void readMainIMU(float* roll, float* pitch, float* yaw) {
-    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
+// ADD these cache variables near the top of the file, under the static acc_x variables
+static float cached_mRoll = 0.0f, cached_mPitch = 0.0f, cached_mYaw = 0.0f;
+static float cached_sRoll = 0.0f, cached_sPitch = 0.0f, cached_sYaw = 0.0f;
+
+// ADD the new update function
+void updateIMUs() {
+    if (!sensorsReady) return;
     
-    if (sensorsReady) {
-        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            imu::Quaternion quat = imuMain.getQuat();
-            qw = quat.w(); qx = quat.x(); qy = quat.y(); qz = quat.z();
-            xSemaphoreGive(i2cMutex);
-        }
+    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
+    float sqw = 1.0f, sqx = 0.0f, sqy = 0.0f, sqz = 0.0f;
+
+    // Grab the bus once and read both sensors back-to-back
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        // Read Main IMU
+        imu::Quaternion mQuat = imuMain.getQuat();
+        qw = mQuat.w(); qx = mQuat.x(); qy = mQuat.y(); qz = mQuat.z();
+        
+        // Read Secondary IMU
+        imu::Quaternion sQuat = imuSecondary.getQuat();
+        
+        // Apply mounting offsets immediately to secondary
+        multiplyQuaternions(sQuat.w(), sQuat.x(), sQuat.y(), sQuat.z(), 
+                            robotSettings.imu_off_w, robotSettings.imu_off_x, 
+                            robotSettings.imu_off_y, robotSettings.imu_off_z, 
+                            &sqw, &sqx, &sqy, &sqz);
+                            
+        xSemaphoreGive(i2cMutex);
     }
     
-    // Convert directly to zeroed Euler angles
-    quaternionToEuler(qw, qx, qy, qz, roll, pitch, yaw);
+    // Do the heavy trigonometry outside the mutex lock
+    quaternionToEuler(qw, qx, qy, qz, &cached_mRoll, &cached_mPitch, &cached_mYaw);
+    quaternionToEuler(sqw, sqx, sqy, sqz, &cached_sRoll, &cached_sPitch, &cached_sYaw);
 }
 
+// REPLACE the existing readMainIMU function
+void readMainIMU(float* roll, float* pitch, float* yaw) {
+    *roll = cached_mRoll;
+    *pitch = cached_mPitch;
+    *yaw = cached_mYaw;
+}
+
+// REPLACE the existing readSecondaryIMU function
 void readSecondaryIMU(float* roll, float* pitch, float* yaw) {
-    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
-    
-    if (sensorsReady) {
-        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            imu::Quaternion quat = imuSecondary.getQuat();
-            
-            // Multiply by the flashed mounting offset to "zero" the pendulum IMU
-            multiplyQuaternions(quat.w(), quat.x(), quat.y(), quat.z(), 
-                                robotSettings.imu_off_w, robotSettings.imu_off_x, 
-                                robotSettings.imu_off_y, robotSettings.imu_off_z, 
-                                &qw, &qx, &qy, &qz);
-                                
-            xSemaphoreGive(i2cMutex);
-        }
-    }
-    
-    // Convert offset-corrected quaternion to zeroed Euler angles
-    quaternionToEuler(qw, qx, qy, qz, roll, pitch, yaw);
+    *roll = cached_sRoll;
+    *pitch = cached_sPitch;
+    *yaw = cached_sYaw;
 }
 
 void printIMU() {

@@ -5,7 +5,7 @@ Fixed to use 1000-2000 RC standard mapping.
 from config import *
 import serial_comm
 
-def send_control(robot_id, vx, vy, omega):
+def send_control(robot_id, mode, vx, vy, omega):
     """
     Send motor control command to robot.
     Maps -1.0..1.0 to 1000..2000 uint16 for RC Standard.
@@ -23,10 +23,11 @@ def send_control(robot_id, vx, vy, omega):
     vy_u16 = map_to_rc(vy)
     omega_u16 = map_to_rc(omega)
     
-    # Packet Format: [TYPE, ID, VX_L, VX_H, VY_L, VY_H, OMEGA_L, OMEGA_H]
+    # Packet Format: [TYPE, ID, MODE, VX_L, VX_H, VY_L, VY_H, OMEGA_L, OMEGA_H]
     pkt = bytes([
         PACKET_CONTROL, 
         int(robot_id), 
+        int(mode),
         vx_u16 & 0xFF, (vx_u16 >> 8) & 0xFF,
         vy_u16 & 0xFF, (vy_u16 >> 8) & 0xFF,
         omega_u16 & 0xFF, (omega_u16 >> 8) & 0xFF

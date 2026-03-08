@@ -16,16 +16,27 @@ bool isEstopActive() {
 void activateEstop() {
     estopActive = true;
     motorsEnabled = false;
-    //stopMotors();
 }
 
 bool clearEstop() {
-    if (!isCalibrationRequired() && getErrorFlags() == ERROR_NONE) {
-        estopActive = false;
-        return true;
+    // Check if calibration is required
+    if (isCalibrationRequired()) {
+        return false;
     }
 
-    return false;
+    // Check for critical hardware error flags
+    uint32_t errorFlags = getErrorFlags();
+    if (errorFlags == ERROR_BATT_OVERVOLTAGE ||
+        errorFlags == ERROR_BATT_UNDERVOLTAGE ||
+        errorFlags == ERROR_TEMP_OVERHEAT ||
+        errorFlags == ERROR_SENSOR_OFFLINE) {
+        return false;
+    }
+
+    // All checks passed - clear estop
+    clearErrorFlags();
+    estopActive = false;
+    return true;
 }
 
 bool areMotorsEnabled() {

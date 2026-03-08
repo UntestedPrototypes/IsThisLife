@@ -47,7 +47,7 @@ struct __attribute__((packed)) PacketHeader {
 
 // Inherits type, robot_id, and heartbeat from PacketHeader
 struct __attribute__((packed)) ControlPacket : public PacketHeader {
-    uint8_t priority;
+    uint8_t mode;           // 0 = Direct, 1 = Stabilized
     uint16_t vx;            // 1000-2000 us (Throttle)
     uint16_t vy;            // 1000-2000 us (Strafe/Steer)
     uint16_t omega;         // 1000-2000 us (Rotation)
@@ -56,7 +56,8 @@ struct __attribute__((packed)) ControlPacket : public PacketHeader {
 
 struct __attribute__((packed)) TelemetryPacket : public PacketHeader {
     uint8_t acked_type;
-    uint8_t status;       
+    uint8_t status;
+    uint8_t mode;       
     uint16_t battery_mv;  
     int16_t motor_temp;   
     uint8_t error_flags;  

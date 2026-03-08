@@ -7,9 +7,8 @@ import os
 import platform
 from config import *
 
-# --- MAC OS FIX ---
-if platform.system() == "Darwin":
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 pygame.init()
 pygame.joystick.init()
@@ -20,11 +19,13 @@ DEFAULT_MAPPINGS = {
     "omega": ("none", 0),    # Unbound (Rotation disabled)
     "estop": ("button", 0),  # A Button / Cross
     "arm": ("button", 1),    # B Button / Circle
-    "cruise_control": ("button", 3) # Y Button / Triangle
+    "cruise_control": ("button", 3), # Y Button / Triangle
+    "mode_switch": ("button", 4)     # NEW: Left Bumper (L1)
 }
 
-CRUISE_HOLD_TIME = 1.0  # Renamed from AUTOPILOT_HOLD_TIME
+CRUISE_HOLD_TIME = 1.0  
 CRUISE_ADJUST_RATE = 0.02
+MODE_HOLD_TIME = 1.0 # 1 second press to switch control mode
 
 class JoystickController:
     """Represents a single connected joystick"""
@@ -44,6 +45,10 @@ class JoystickController:
         self.cruise_speed = 0.0
         self.cruise_btn_start = 0
         self.cruise_btn_prev = False
+        
+        self.mode_btn_start = 0
+        self.mode_btn_prev = False
+        self.pending_mode_toggle = False
         
         # Learning States
         self.learning_mode = None
@@ -69,7 +74,6 @@ class JoystickController:
         if abs(val) < dz:
             return 0.0
         sign = 1.0 if val > 0 else -1.0
-        # Smoothly map from (dz -> 1.0) to (0.0 -> 1.0)
         return sign * ((abs(val) - dz) / (1.0 - dz))
 
     def get_control_values(self, deadzone=0.10):
@@ -83,7 +87,17 @@ class JoystickController:
         dz_vy = self._apply_deadzone(raw_vy, deadzone)
         dz_omega = self._apply_deadzone(raw_omega, deadzone)
         
-        # Autopilot Logic
+        # --- MODE SWITCH LOGIC (Long Press) ---
+        mode_btn_val = self.get_input_value(self.mappings.get("mode_switch", ("none", 0)))
+        is_mode_pressed = (mode_btn_val > 0.5)
+        
+        if is_mode_pressed and not self.mode_btn_prev:
+            self.pending_mode_toggle = True 
+            self.rumble(0.5, 0.5, 300) 
+                
+        self.mode_btn_prev = is_mode_pressed
+
+        # --- CRUISE CONTROL LOGIC ---
         btn_val = self.get_input_value(self.mappings["cruise_control"])
         is_pressed = (btn_val > 0.5)
         
@@ -123,12 +137,16 @@ class JoystickController:
             "estop": self.get_input_value(self.mappings["estop"]),
             "arm": self.get_input_value(self.mappings["arm"]),
             "cruise_control": btn_val,
-            "cruise_state": "ENABLED" if self.cruise_active else "DISABLED", # New State Field
-            "cruise_val": self.cruise_speed
+            "mode_switch": mode_btn_val,
+            "cruise_state": "ENABLED" if self.cruise_active else "DISABLED",
+            "cruise_val": self.cruise_speed,
+            "toggle_mode": self.pending_mode_toggle
         }
 
+    def clear_mode_toggle(self):
+        self.pending_mode_toggle = False
+
     def cancel_cruise(self):
-        """Force disables cruise control (e.g., when the robot is disarmed or E-Stopped)"""
         self.cruise_active = False
         self.cruise_speed = 0.0
         self.cruise_btn_start = 0
@@ -154,16 +172,14 @@ class JoystickController:
         except: pass
         return None
     def get_mapping_text(self, k): 
-        # Safely return "--" if the key doesn't exist in the mappings dictionary
         if k not in self.mappings: 
             return "--"
-        
         m = self.mappings[k]
         if m[0] == "none": return "Unbound"
         return f"{'Axis' if m[0]=='axis' else 'Btn'} {m[1]}"
 
-
 class ControllerManager:
+    # ... (ControllerManager implementation remains unchanged) ...
     def __init__(self):
         self.controllers = {}
         self.scan_devices()

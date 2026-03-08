@@ -5,9 +5,8 @@
 #include <Arduino.h>
 #include <esp_now.h>
 
-// Helper to handle ESP-NOW sends
 void dispatchPacket(uint8_t robot_id, void* pkt, size_t size) {
-    if (robot_id == 0) { // Broadcast
+    if (robot_id == 0) { 
         for (int i = 0; i < NUM_ROBOTS; i++) {
             if (esp_now_is_peer_exist(robotMacs[i])) {
                 esp_now_send(robotMacs[i], (uint8_t*)pkt, size);
@@ -20,10 +19,10 @@ void dispatchPacket(uint8_t robot_id, void* pkt, size_t size) {
     }
 }
 
-void sendControlCommand(uint8_t robot_id, uint16_t vx, uint16_t vy, uint16_t omega) {
+void sendControlCommand(uint8_t robot_id, uint8_t mode, uint16_t vx, uint16_t vy, uint16_t omega) {
     ControlPacket pkt{};
     pkt.type = PACKET_CONTROL;
-    pkt.priority = 0; // Default priority
+    pkt.mode = mode; // Inject the selected control mode
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
     pkt.vx = vx;
@@ -41,11 +40,9 @@ void sendArmRobot(uint8_t robot_id) {
     pkt.type = PACKET_ESTOP_CLEAR;
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
-
     pkt.vx = RC_NEUTRAL;
     pkt.vy = RC_NEUTRAL;
     pkt.omega = RC_NEUTRAL;
-
     pkt.timestamp_ms = millis();    
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
@@ -57,11 +54,9 @@ void sendEstopRobot(uint8_t robot_id) {
     pkt.type = PACKET_ESTOP;
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
-
     pkt.vx = RC_NEUTRAL;
     pkt.vy = RC_NEUTRAL;
     pkt.omega = RC_NEUTRAL;
-
     pkt.timestamp_ms = millis();
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
@@ -72,10 +67,8 @@ void sendConfirmation(uint8_t robot_id, uint8_t step_id, bool approved) {
     pkt.type = PACKET_CONFIRM;
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
-
     pkt.step_id = step_id;
     pkt.approved = approved;
-
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }
@@ -86,7 +79,6 @@ void sendStartSequence(uint8_t robot_id, uint8_t sequence_id) {
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
     pkt.sequence_id = sequence_id;
-
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }
@@ -95,7 +87,6 @@ void sendDiscover() {
     ControlPacket pkt{};
     pkt.type = PACKET_DISCOVER;
     pkt.heartbeat = heartbeatCounter;
-
     dispatchPacket(0, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }

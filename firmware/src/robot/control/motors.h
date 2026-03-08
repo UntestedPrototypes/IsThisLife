@@ -5,22 +5,14 @@
 
 #include <stdint.h>
 #include <ESP32Servo.h>
-#include "vectors.h"
 
 bool initMotors();
 
-// Call this every loop cycle to run the PID
-void updateMotorLoop();
-
-// Helper to set the TARGETS
-void setTargetVelocities(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us);
-void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us);
-
-// Called safely by ControlTask to write target states to hardware pins
-void executeMotorCommands();
+void setMotorSpeed(float target_normVx, float target_normVy);
 void stopMotors();
 
-// MotorChannel class remains exactly the same below...
+void setEncoderLimits(int32_t min_limit, int32_t max_limit);
+
 class MotorChannel {
 public:
   MotorChannel(uint8_t pin,
@@ -30,14 +22,12 @@ public:
                uint16_t speed_range_us,
                uint16_t min_delta_us = 0,
                bool direction_inverted = false,
-               Vec3 PID = {0.0f, 0.0f, 0.0f},
-               float angle_range = 0.0f);
+               float min_fwd = 0.0f,    // Deadzone skip for forward (0.0 - 1.0)
+               float min_rev = 0.0f);   // Deadzone skip for reverse (0.0 - 1.0)
 
   bool begin();
   uint16_t command(float controlNorm);
   uint16_t writeNeutral();
-  float computePID(float targetAngle, float currentAngle, float dt);
-  void resetPID();
   bool attached();
 
 private:
@@ -52,14 +42,11 @@ private:
   uint16_t _speed_range_us;
   uint16_t _min_delta_us;
   bool     _direction_inverted;
-  Vec3     _PID;
-  float    _angle_range;
-  float    _prevError;
-  float    _integral;
+  float    _min_fwd; // Internal storage for deadzone skip
+  float    _min_rev;
   Servo    _servo;
 
   uint16_t _current_pulse;
 };
-
 #endif // MOTORS_H
 #endif // ROLE_ROBOT

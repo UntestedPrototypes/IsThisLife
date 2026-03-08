@@ -35,8 +35,8 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
         TelemetryPacket ack{};
         memcpy(&ack, data, sizeof(ack));
 
-        // Pass the new IMU float values to the storage array
-        updateRobotTelemetry(ack.robot_id, ack.heartbeat, ack.status, 
+        // <--- NEW: Added ack.mode to the parameter list
+        updateRobotTelemetry(ack.robot_id, ack.heartbeat, ack.status, ack.mode, 
                         ack.battery_mv, ack.motor_temp, ack.error_flags,
                         ack.imu_calibration,
                         ack.main_roll, ack.main_pitch, 
@@ -44,6 +44,8 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
 
         ack.latency_ms = 404; // Placeholder
 
+        // Forwards the raw bytes over serial. Because we updated packets.h, 
+        // sizeof(ack) now includes the mode automatically.
         forwardTelemetryToPython(ack);
     }
 }

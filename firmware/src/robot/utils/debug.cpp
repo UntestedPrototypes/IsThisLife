@@ -4,7 +4,8 @@
 // Default states
 bool dbg_general = true;
 bool dbg_imu = false;
-bool dbg_packets = false;
+bool dbg_pkt_rx = false; // <--- Replaced dbg_packets
+bool dbg_pkt_tx = false; // <--- Replaced dbg_packets
 
 // Pause state tracking
 volatile bool dbg_paused = false;

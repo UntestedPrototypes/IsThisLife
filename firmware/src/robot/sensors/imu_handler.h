@@ -9,6 +9,7 @@ bool initIMU();
 int16_t getIMUTemp();
 
 // --- Processed & Zeroed Orientation Data ---
+void updateIMUs(); // <-- ADD THIS
 void readMainIMU(float* roll, float* pitch, float* yaw);
 void readSecondaryIMU(float* roll, float* pitch, float* yaw);
 void printIMU();

@@ -10,7 +10,37 @@
                 "vy": 50,
                 "omega": 0
             },
-            "deadzone": 10
+            "deadzone": 10,
+            "mappings": {
+                "vx": [
+                    "axis",
+                    1
+                ],
+                "vy": [
+                    "axis",
+                    2
+                ],
+                "omega": [
+                    "none",
+                    0
+                ],
+                "estop": [
+                    "button",
+                    0
+                ],
+                "arm": [
+                    "button",
+                    1
+                ],
+                "cruise_control": [
+                    "button",
+                    3
+                ],
+                "mode_switch": [
+                    "button",
+                    2
+                ]
+            }
         }
     },
     "auto_reconnect": true

@@ -7,45 +7,40 @@
 #include <Arduino.h>
 
 void readSerialCommands() {
-    // Process all available full packets in the buffer
     while (Serial.available() > 0) {
         uint8_t cmd_type = Serial.peek();
         size_t expected_len = 0;
 
-        // Determine expected length based on Python packet_sender.py protocol
         switch(cmd_type) {
-            case PACKET_CONTROL:        expected_len = 8; break; // Type(1)+ID(1)+3*U16(6)
-            case PACKET_ESTOP:          expected_len = 2; break; // Type(1)+ID(1)
+            case PACKET_CONTROL:        expected_len = 9; break; // Type(1)+ID(1)+Mode(1)+3*U16(6)
+            case PACKET_ESTOP:          expected_len = 2; break; 
             case PACKET_ESTOP_CLEAR:    expected_len = 2; break; 
             case PACKET_DISCOVER:       expected_len = 2; break;
-            case PACKET_CONFIRM:        expected_len = 4; break; // Type(1)+ID(1)+Step(1)+Apprv(1)
-            case PACKET_START_SEQUENCE: expected_len = 3; break; // Type(1)+ID(1)+Seq(1)
+            case PACKET_CONFIRM:        expected_len = 4; break; 
+            case PACKET_START_SEQUENCE: expected_len = 3; break; 
             default:
-                // Unknown byte: discard to find next valid header
                 Serial.read(); 
                 continue;
         }
 
-        // If the full packet hasn't arrived yet, stop and wait
         if (Serial.available() < expected_len) {
             return; 
         }
 
-        // Now safe to consume Type and ID
         cmd_type = Serial.read(); 
         uint8_t robot_id = Serial.read();
 
         switch(cmd_type) {
             case PACKET_CONTROL: {
+                uint8_t mode = Serial.read(); // Read the new mode byte
                 uint8_t buf[6];
                 Serial.readBytes(buf, 6);
                 
-                // Reassemble Little Endian from Python
                 uint16_t vx = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
                 uint16_t vy = (uint16_t)buf[2] | ((uint16_t)buf[3] << 8);
                 uint16_t omega = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
                 
-                sendControlCommand(robot_id, vx, vy, omega);
+                sendControlCommand(robot_id, mode, vx, vy, omega);
                 break;
             }
             

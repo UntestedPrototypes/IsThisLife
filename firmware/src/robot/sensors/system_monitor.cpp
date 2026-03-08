@@ -34,27 +34,29 @@ int16_t readTemp() {
     return getIMUTemp();
 }
 
+static uint8_t latchedErrors = ERROR_NONE; // Persistent software error state
+
+void raiseErrorFlag(uint8_t flag) {
+    latchedErrors |= flag; // Bitwise OR to add the new error
+}
+
+void clearErrorFlags() {
+    latchedErrors = ERROR_NONE; // Reset all latched errors
+}
+
 uint8_t getErrorFlags() {
     if (!sensorsReady) return ERROR_SENSOR_OFFLINE;
-    uint8_t flags = ERROR_NONE;
+    
+    // Start with any software errors already raised
+    uint8_t flags = latchedErrors;
     
     uint16_t batt = readBattery();
     int16_t temp = readTemp();
     
-    // 1. Battery Under-Voltage (drops below 10V / 10000mV)
-    if (batt > 0 && batt < 14800) { 
-        flags |= ERROR_BATT_UNDERVOLTAGE;
-    }
-    
-    // 2. Battery Over-Voltage (spikes above 13V / 13000mV)
-    if (batt > 17000) { 
-        flags |= ERROR_BATT_OVERVOLTAGE;
-    }
-
-    // 3. Over-Temperature (>= 40 Celsius)
-    if (temp >= 40) {
-        flags |= ERROR_TEMP_OVERHEAT;
-    }
+    // Hardware Checks (Battery/Temp)
+    if (batt > 0 && batt < 14800) flags |= ERROR_BATT_UNDERVOLTAGE;
+    if (batt > 17000)             flags |= ERROR_BATT_OVERVOLTAGE;
+    if (temp >= 40)               flags |= ERROR_TEMP_OVERHEAT;
     
     return flags;
 }

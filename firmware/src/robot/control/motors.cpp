@@ -3,19 +3,17 @@
 #include "motors.h"
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
+#include "../utils/debug.h"
 #include "Servo_ST3215.h"
 #include <Arduino.h>
 
-Vec3 default_pid(0.01f, 0.01f, 0.0f); 
-
-MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, default_pid, 40.0f);
+// Cleaned up initialization without the old PID/angle arguments
+MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, 0.10f, 0.10f);
 Servo_ST3215 pendServos(1, 2);
 const int MAX_ST3215_SPEED = 3400; 
 
-// Storage for target velocities asynchronously set by SystemTask
-static uint16_t target_vx = 1500;
-static uint16_t target_vy = 1500;
-static uint16_t target_omega = 1500;
+static float current_normVx = 0.0f;
+static float current_normVy = 0.0f;
 
 bool initMotors() {
     Serial.println("DEBUG: Initializing Motors...");
@@ -27,64 +25,47 @@ bool initMotors() {
         Serial.println("ERROR: Failed to init ST3215 Servos!");
         return false;
     } else {
-        // --- MODIFIED: Use the preferences instead of hardcoded numbers ---
         pendServos.setOuterLimits(robotSettings.encoder_limit_min, robotSettings.encoder_limit_max); 
         pendServos.enableMotors();
     }
     return true;
 }
 
-float mapRcInput(uint16_t input_us) {
-    if (input_us < 1000) input_us = 1000;
-    if (input_us > 2000) input_us = 2000;
-    return (float)(input_us - 1500) / 500.0f;
+void setEncoderLimits(int32_t min_limit, int32_t max_limit) {
+    // 1. Update the hardware object limits
+    pendServos.setOuterLimits(min_limit, max_limit);
+
+    // 2. Sync the global settings structure
+    robotSettings.encoder_limit_min = min_limit;
+    robotSettings.encoder_limit_max = max_limit;
+
+    // 3. Persist the new limits to NVS Flash memory
+    saveEncoderLimits(min_limit, max_limit);
+    
+    DEBUG_PRINTF("DEBUG: Encoder limits updated to [%d, %d] and saved to Flash.\n", 
+                  min_limit, max_limit);
 }
 
-void setTargetVelocities(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
-    target_vx = vx_us;
-    target_vy = vy_us;
-    target_omega = omega_us;
-}
-
-void setMotors(uint16_t vx_us, uint16_t vy_us, uint16_t omega_us) {
-    setTargetVelocities(vx_us, vy_us, omega_us);
-}
-
-// Strictly called by ControlTask on Core 1 to apply targets safely
-static float current_normVx = 0.0f;
-static float current_normVy = 0.0f;
-
-void executeMotorCommands() {
-    float target_normVx = mapRcInput(target_vx);
-    float target_normVy = mapRcInput(target_vy);
-
-    // Exponential Moving Average Filter
+void setMotorSpeed(float target_normVx, float target_normVy) {
+    
+    // 1. Apply smoothing/filtering
     const float alpha = 0.4f; 
     current_normVx = (alpha * target_normVx) + ((1.0f - alpha) * current_normVx);
     current_normVy = (alpha * target_normVy) + ((1.0f - alpha) * current_normVy);
 
-    // Asymptote Snapping to prevent float micro-jitter
     if (abs(current_normVx - target_normVx) < 0.002f) current_normVx = target_normVx;
     if (abs(current_normVy - target_normVy) < 0.002f) current_normVy = target_normVy;
 
-    // ==============================================================
-    // NEW: 50Hz PWM Hardware Limiter
-    // ==============================================================
-    // Only update the physical PWM pin every 20ms (50Hz) to prevent 
-    // chopping the ESC's waveform, while allowing the RTOS to run at 100Hz.
+    // 2. Command Main Motor Hardware (Max 50Hz update rate for standard PWM)
     static uint32_t last_pwm_update = 0;
     uint32_t now = millis();
     if (now - last_pwm_update >= 20) {
-        float locked_normVx = round(target_normVx * 50.0f) / 50.0f;
+        float locked_normVx = round(current_normVx * 50.0f) / 50.0f;
         mainMotor.command(locked_normVx);
         last_pwm_update = now;
     }
 
-    // ==============================================================
-    // ST3215 Servos (Digital UART)
-    // ==============================================================
-    // These take digital serial commands, so they can easily handle 
-    // the full 100Hz update rate without glitching.
+    // 3. Command Servo Hardware
     int targetVelocity = (int)(current_normVy * MAX_ST3215_SPEED);
     pendServos.setVelocity(targetVelocity);
 }
@@ -94,23 +75,17 @@ void stopMotors() {
     pendServos.setVelocity(0);
     pendServos.stop();
     
-    // Reset smoothers so it doesn't "ramp up" from an old value when re-enabled
     current_normVx = 0.0f;
     current_normVy = 0.0f;
 }
-
-void updateMotorLoop() {
-    //pendServos.update();
-}
-
-// --- MotorChannel Implementation (Unchanged) ---
+// --- MotorChannel Implementation ---
 MotorChannel::MotorChannel(uint8_t pin, uint16_t min_us, uint16_t max_us, 
                            uint16_t neutral_us, uint16_t speed_range_us, 
-                           uint16_t min_delta_us, bool direction_inverted, 
-                           Vec3 PID, float angle_range)
+                           uint16_t min_delta_us, bool direction_inverted,
+                           float min_fwd, float min_rev)
 : _pin(pin), _min_us(min_us), _max_us(max_us), _neutral_us(neutral_us),
   _speed_range_us(speed_range_us), _min_delta_us(min_delta_us),
-  _direction_inverted(direction_inverted), _PID(PID), _angle_range(angle_range),
+  _direction_inverted(direction_inverted), _min_fwd(min_fwd), _min_rev(min_rev),
   _current_pulse(0)
 {}
 
@@ -137,14 +112,26 @@ uint16_t MotorChannel::writeMicroseconds(uint16_t pulse) {
         _servo.writeMicroseconds(pulse);
         _current_pulse = pulse;
     }
-    
     return pulse;
 }
 
 uint16_t MotorChannel::computePulse(float controlNorm) const {
-    int32_t pulse = (int32_t)_neutral_us + (int32_t)(controlNorm * (float)_speed_range_us);
+    float remappedNorm = 0.0f;
+
+    // Deadzone Skip Logic
+    if (controlNorm > 0.001f) {
+        remappedNorm = _min_fwd + (controlNorm * (1.0f - _min_fwd));
+    } else if (controlNorm < -0.001f) {
+        float absNorm = abs(controlNorm);
+        remappedNorm = -(_min_rev + (absNorm * (1.0f - _min_rev)));
+    }
+
+    int32_t pulse = (int32_t)_neutral_us + (int32_t)(remappedNorm * (float)_speed_range_us);
+    
+    // Maintain support for legacy hard-cutoff min_delta if needed
     int32_t delta = abs(pulse - (int32_t)_neutral_us);
     if ((uint32_t)delta < (uint32_t)_min_delta_us) pulse = _neutral_us;
+    
     return clampPulse(pulse);
 }
 

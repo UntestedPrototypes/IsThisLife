@@ -12,9 +12,7 @@ void sendArmRobot(uint8_t robot_id);
 void sendEstopRobot(uint8_t robot_id);
 void sendConfirmation(uint8_t robot_id, uint8_t step_id, bool approved);
 void sendStartSequence(uint8_t robot_id, uint8_t sequence_id);
-
-// Updated for RC signals (1000-2000)
-void sendControlCommand(uint8_t robot_id, uint16_t vx, uint16_t vy, uint16_t omega);
+void sendControlCommand(uint8_t robot_id, uint8_t mode, uint16_t vx, uint16_t vy, uint16_t omega);
 
 void sendDiscover();
 

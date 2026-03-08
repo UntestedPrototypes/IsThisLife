@@ -3,6 +3,7 @@
 #include "serial_cli.h"
 #include "../config/robot_preferences.h"
 #include "../utils/debug.h"
+#include "../control/safety.h" 
 #include <Arduino.h>
 
 void handleSerialCommands() {
@@ -11,15 +12,11 @@ void handleSerialCommands() {
     String input = Serial.readStringUntil('\n');
     input.trim();
     
-    // --- NEW: Catch empty input (pressing Enter) ---
     if (input.length() == 0) {
-        if (dbg_paused) {
-            resumeDebug();
-        }
+        if (dbg_paused) resumeDebug();
         return;
     }
 
-    // Split input into command and arguments
     int spaceIndex = input.indexOf(' ');
     String cmd = input;
     String args = "";
@@ -29,10 +26,9 @@ void handleSerialCommands() {
         args.trim();
     }
     cmd.toUpperCase();
+    args.toUpperCase();
 
     if (cmd == "VIEW" || cmd == "HELP") {
-        
-        // Pause background debug prints indefinitely
         pauseDebug(); 
         
         Serial.println("\n=== Current Robot Settings ===");
@@ -49,25 +45,34 @@ void handleSerialCommands() {
         Serial.printf("IMU Offsets (W,X,Y,Z): %.4f, %.4f, %.4f, %.4f\n",
             robotSettings.imu_off_w, robotSettings.imu_off_x, 
             robotSettings.imu_off_y, robotSettings.imu_off_z);
+
+        Serial.printf("Pitch PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
+                  robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, robotSettings.pitch_dir);
+    Serial.printf("Roll  PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
+                  robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir);
             
         Serial.printf("Debug General: %s\n", dbg_general ? "ON" : "OFF");
         Serial.printf("Debug IMU: %s\n", dbg_imu ? "ON" : "OFF");
-        Serial.printf("Debug Packets: %s\n", dbg_packets ? "ON" : "OFF");
+        Serial.printf("Debug Pkt RX: %s\n", dbg_pkt_rx ? "ON" : "OFF"); // <--- Split view
+        Serial.printf("Debug Pkt TX: %s\n", dbg_pkt_tx ? "ON" : "OFF"); // <--- Split view
+        Serial.printf("Calibration Req: %s\n", isCalibrationRequired() ? "YES" : "NO (Dev Mode)");
         Serial.println("==============================");
         
         Serial.println("Commands:");
         Serial.println("  VIEW                - Show settings");
-        Serial.println("  SET_ID <id>         - Set Robot ID (e.g. SET_ID 5)");
-        Serial.println("  SET_MAC <mac>       - Set Controller MAC (e.g. SET_MAC B0:CB:D8:C1:6B:E0)");
+        Serial.println("  SET_ID <id>         - Set Robot ID");
+        Serial.println("  SET_MAC <mac>       - Set Controller MAC");
         Serial.println("  SET_HB <ms>         - Set Heartbeat timeout");
         Serial.println("  SET_TLM <pkts>      - Set Telemetry interval");
         Serial.println("  SET_CNF <ms>        - Set Confirm timeout");
-        Serial.println("  SET_ENC <min> <max> - Set Encoder limits (e.g. SET_ENC -12288 12288)");
+        Serial.println("  SET_ENC <min> <max> - Set Encoder limits");
+        Serial.println("  SET_PID_PITCH <P> <I> <D> <DIR> - Set Pitch constants");
+        Serial.println("  SET_PID_ROLL  <P> <I> <D> <DIR> - Set Roll constants");
         Serial.println("  SET_DBG_GEN <ON/OFF>- Toggle general debug messages");
         Serial.println("  SET_DBG_IMU <ON/OFF>- Toggle high-frequency IMU stream");
-        Serial.println("  SET_DBG_PKT <ON/OFF>- Toggle incoming packet stream");
-        
-        // --- NEW: Exit Prompt ---
+        Serial.println("  SET_DBG_RX <ON/OFF> - Toggle incoming packet stream");  // <--- Split CMD
+        Serial.println("  SET_DBG_TX <ON/OFF> - Toggle outgoing telemetry stream"); // <--- Split CMD
+        Serial.println("  DEV_MODE <ON/OFF>   - Toggle Dev Mode (skips IMU calibration)"); 
         Serial.println("\n*** Press [ENTER] to exit menu and resume logs ***\n");
     }
     else if (cmd == "SET_ID") {
@@ -104,21 +109,78 @@ void handleSerialCommands() {
             Serial.println("ERROR: Invalid format. Use: SET_ENC <min> <max>");
         }
     }
+    else if (cmd == "SET_PID_PITCH") {
+        float p, i, d, dir;
+        // Arguments format: "0.05 0.001 0.01 1.0"
+        int count = sscanf(args.c_str(), "%f %f %f %f", &p, &i, &d, &dir);
+        
+        if (count == 4) {
+            // Use current Roll settings to perform a full save
+            savePidSettings(p, i, d, 
+                           robotSettings.kp_roll, robotSettings.ki_roll, 
+                           robotSettings.kd_roll, robotSettings.pitch_dir, // Note: updating pitch_dir
+                           robotSettings.roll_dir);
+            
+            // Correction: The savePidSettings signature used earlier was:
+            // savePidSettings(kpp, kip, kdp, kpr, kir, kdr, pdir, rdir)
+            savePidSettings(p, i, d, 
+                           robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, 
+                           dir, robotSettings.roll_dir);
+
+            Serial.printf("SUCCESS: Pitch PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_PID_PITCH <P> <I> <D> <DIR>");
+        }
+    }
+    else if (cmd == "SET_PID_ROLL") {
+        float p, i, d, dir;
+        int count = sscanf(args.c_str(), "%f %f %f %f", &p, &i, &d, &dir);
+        
+        if (count == 4) {
+            // Use current Pitch settings to perform a full save
+            savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
+                           p, i, d, 
+                           robotSettings.pitch_dir, dir);
+
+            Serial.printf("SUCCESS: Roll PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_PID_ROLL <P> <I> <D> <DIR>");
+        }
+    }
+    else if (cmd == "SET_PID_PITCH") {
+        // Usage: SET_PID_PITCH <P> <I> <D> <DIR>
+        // Logic to parse args and call savePidSettings(...)
+    }
     else if (cmd == "SET_DBG_GEN") {
         bool state = (args == "ON");
-        saveDebugSettings(state, dbg_imu, dbg_packets);
+        saveDebugSettings(state, dbg_imu, dbg_pkt_rx, dbg_pkt_tx);
     }
     else if (cmd == "SET_DBG_IMU") {
         bool state = (args == "ON");
-        saveDebugSettings(dbg_general, state, dbg_packets);
+        saveDebugSettings(dbg_general, state, dbg_pkt_rx, dbg_pkt_tx);
     }
-    else if (cmd == "SET_DBG_PKT") {
+    // --- NEW: Split Debug Commands ---
+    else if (cmd == "SET_DBG_RX") {
         bool state = (args == "ON");
-        saveDebugSettings(dbg_general, dbg_imu, state);
+        saveDebugSettings(dbg_general, dbg_imu, state, dbg_pkt_tx);
+    }
+    else if (cmd == "SET_DBG_TX") {
+        bool state = (args == "ON");
+        saveDebugSettings(dbg_general, dbg_imu, dbg_pkt_rx, state);
+    }
+    else if (cmd == "DEV_MODE") {
+        if (args == "ON") {
+            setCalibrationRequired(false);
+            Serial.println("WARNING: Dev Mode ENABLED. IMU calibration requirement bypassed!");
+        } else if (args == "OFF") {
+            setCalibrationRequired(true);
+            Serial.println("Dev Mode DISABLED. IMU calibration required.");
+        } else {
+            Serial.println("ERROR: Invalid format. Use: DEV_MODE <ON/OFF>");
+        }
     }
     else {
         Serial.println("Unknown command. Type HELP for a list of commands.");
     }
 }
-
 #endif // ROLE_ROBOT

@@ -16,9 +16,32 @@ class GameControllerTab:
         self.selected_controller_id = None
         self.learning_button_map = {} 
         self._setup_ui()
-        if initial_assignments: self._load_initial_assignments(initial_assignments)
+        
+        # 1. Load data from JSON into self.assignments
+        if initial_assignments: 
+            self._load_initial_assignments(initial_assignments)
+        
+        # 2. Hook up initial controllers and inject saved mappings FIRST
+        for r_id, info in self.assignments.items():
+            new_id = self.manager.find_id_by_guid(info['guid'], instance_index=info.get('instance_index', 0))
+            if new_id is not None:
+                info['id'] = new_id
+                ctrl = self.manager.get_controller(new_id)
+                if ctrl:
+                    info['name'] = ctrl.name
+                    self._apply_saved_mappings(ctrl, info.get('mappings', {}))
+                
+        # 3. NOW refresh the UI so it displays the newly injected mappings
         self.refresh_controllers()
         self._on_robot_select(None)
+        self._update_assignment_list()
+
+    def _apply_saved_mappings(self, ctrl, saved_mappings):
+        """Safely injects loaded JSON mappings back into the controller"""
+        if not ctrl or not saved_mappings: return
+        for k, v in saved_mappings.items():
+            if isinstance(v, (list, tuple)) and len(v) == 2:
+                ctrl.mappings[k] = tuple(v)
 
     def get_frame(self): return self.frame
     
@@ -42,26 +65,25 @@ class GameControllerTab:
         edit_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         sel_frame = ttk.Frame(edit_frame); sel_frame.pack(fill=tk.X, padx=5, pady=10)
         
-        # Robot Selection
         ttk.Label(sel_frame, text="Target Robot:").pack(side=tk.LEFT, padx=5)
-        self.robot_var = tk.StringVar() # Changed from IntVar to StringVar so it can be blank
+        self.robot_var = tk.StringVar() 
         self.robot_combo = ttk.Combobox(sel_frame, textvariable=self.robot_var, width=5)
         self.robot_combo.pack(side=tk.LEFT, padx=5)
         self.robot_combo.bind("<<ComboboxSelected>>", self._on_robot_select)
 
-        # Controller Selection
         ttk.Label(sel_frame, text="Link Controller:").pack(side=tk.LEFT, padx=(20, 5))
         self.controller_combo = ttk.Combobox(sel_frame, state="readonly", width=30); self.controller_combo.pack(side=tk.LEFT, padx=5); self.controller_combo.bind("<<ComboboxSelected>>", self._on_controller_select)
 
-        # Global Deadzone
         ttk.Label(sel_frame, text="Deadzone %:").pack(side=tk.LEFT, padx=(20, 5))
         self.deadzone_var = tk.IntVar(value=10)
         self.deadzone_sb = ttk.Spinbox(sel_frame, from_=0, to=50, increment=5, width=5, textvariable=self.deadzone_var)
         self.deadzone_sb.pack(side=tk.LEFT, padx=5)
 
         map_frame = ttk.Frame(edit_frame); map_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        keys = ["vx", "vy", "omega", "estop", "arm", "cruise_control", "cruise_state"]
-        labels = ["Forward/Back", "Left/Right", "Rotate", "E-STOP", "ARM/Disarm", "Cruise-Control Btn", "Cruise-Control State"]
+        
+        keys = ["vx", "vy", "omega", "estop", "arm", "cruise_control", "mode_switch"]
+        labels = ["Forward/Back", "Left/Right", "Rotate", "E-STOP", "ARM/Disarm", "Cruise-Control Btn", "Mode Switch Btn"]
+        
         ttk.Label(map_frame, text="Function", font=("", 9, "bold")).grid(row=0, column=0, padx=5, sticky="w")
         ttk.Label(map_frame, text="Value", font=("", 9, "bold")).grid(row=0, column=1, padx=5)
         ttk.Label(map_frame, text="Mapped To", font=("", 9, "bold")).grid(row=0, column=2, padx=5)
@@ -75,13 +97,7 @@ class GameControllerTab:
             lbl_map = ttk.Label(map_frame, text="--", width=15); lbl_map.grid(row=row, column=2, padx=5)
             
             btn = ttk.Button(map_frame, text="Bind Input", command=lambda k=key: self._start_learning(k))
-            
-            # Hide the bind button and mapping text for the state display
-            if key == "cruise_state":
-                lbl_map.configure(text="N/A")
-                btn.grid_remove() 
-            else:
-                btn.grid(row=row, column=3, padx=5)
+            btn.grid(row=row, column=3, padx=5) 
                 
             sb = None
             if key in ["vx", "vy", "omega"]: sb = ttk.Spinbox(map_frame, from_=10, to=100, increment=10, width=5); sb.set(100); sb.grid(row=row, column=4, padx=5)
@@ -92,13 +108,12 @@ class GameControllerTab:
     def update_available_robots(self, robot_ids):
         current = self.robot_combo.get()
         assigned = list(self.assignments.keys())
-        all_ids = sorted(list(set(robot_ids + assigned))) # Removed hardcoded + [1]
+        all_ids = sorted(list(set(robot_ids + assigned))) 
         
         current_values = list(self.robot_combo['values'])
         try:
             current_values = [int(x) for x in current_values]
-        except:
-            pass
+        except: pass
             
         if current_values != all_ids:
             self.robot_combo['values'] = all_ids
@@ -121,7 +136,8 @@ class GameControllerTab:
                         'instance_index': idx, 
                         'name': "Searching...", 
                         'scales': val.get('scales', default_scales.copy()),
-                        'deadzone': val.get('deadzone', 10)
+                        'deadzone': val.get('deadzone', 10),
+                        'mappings': val.get('mappings', {}) 
                     }
                 else:
                     self.assignments[r_id] = {
@@ -129,18 +145,31 @@ class GameControllerTab:
                         'instance_index': 0, 
                         'name': "Searching...", 
                         'scales': default_scales.copy(),
-                        'deadzone': 10
+                        'deadzone': 10,
+                        'mappings': {} 
                     }
             except ValueError: pass
 
     def get_assignment_guids(self):
         data = {}
         for r_id, info in self.assignments.items():
+            c_id = info['id']
+            ctrl = self.manager.get_controller(c_id) if c_id is not None else None
+            
+            # Extract to robust lists for JSON serialization
+            current_mappings = {}
+            if ctrl:
+                for k, v in ctrl.mappings.items():
+                    current_mappings[k] = list(v)
+            else:
+                current_mappings = info.get('mappings', {})
+            
             data[str(r_id)] = {
                 'guid': info['guid'],
                 'instance_index': info['instance_index'],
                 'scales': info['scales'],
-                'deadzone': info['deadzone']
+                'deadzone': info['deadzone'],
+                'mappings': current_mappings 
             }
         return data
 
@@ -184,11 +213,19 @@ class GameControllerTab:
             try: dz = max(0, min(50, int(self.deadzone_var.get())))
             except: pass
                 
+            current_mappings = {}
+            if ctrl_id is not None:
+                c = self.manager.get_controller(ctrl_id)
+                if c: 
+                    for k, v in c.mappings.items():
+                        current_mappings[k] = list(v)
+                
             self.assignments[r_id] = {
                 'id': ctrl_id, 'guid': ctrl_guid, 
                 'instance_index': idx, 
                 'name': ctrl_name, 'scales': scales,
-                'deadzone': dz
+                'deadzone': dz,
+                'mappings': current_mappings 
             }
             self._update_assignment_list()
         except Exception as e: messagebox.showerror("Error", str(e))
@@ -199,8 +236,12 @@ class GameControllerTab:
         self.controller_map = {f"{c.name} (ID: {c.id})": c for c in controllers}
         self.controller_combo['values'] = values
         self._update_assignment_list()
-        if values and self.controller_combo.get() not in values: self.controller_combo.current(0); self._on_controller_select(None)
-        elif not values: self.controller_combo.set(""); self.selected_controller_id = None
+        if values and self.controller_combo.get() not in values: 
+            self.controller_combo.current(0)
+            self._on_controller_select(None)
+        elif not values: 
+            self.controller_combo.set("")
+            self.selected_controller_id = None
 
     def _on_controller_select(self, event):
         name = self.controller_combo.get()
@@ -225,7 +266,6 @@ class GameControllerTab:
         if not ctrl: return
         success, result, timeout = ctrl.check_learning()
         for key, widgets in self.learning_button_map.items():
-            if key == "cruise_state": continue # Skip state parameter
             if str(widgets["btn"]['state']) == 'disabled':
                 if success or timeout: widgets["btn"].configure(text="Bind Input", state="normal"); 
                 if success: self._update_mapping_display()
@@ -236,9 +276,6 @@ class GameControllerTab:
         ctrl = self.manager.get_controller(self.selected_controller_id)
         if ctrl: 
             for key, widgets in self.learning_button_map.items(): 
-                if key == "cruise_state":
-                    widgets["map_label"].configure(text="N/A")
-                    continue
                 try:
                     widgets["map_label"].configure(text=ctrl.get_mapping_text(key))
                 except Exception:
@@ -254,7 +291,6 @@ class GameControllerTab:
             vals = ctrl.get_control_values(deadzone=dz)
             for key, val in vals.items():
                 if key in self.learning_button_map: 
-                    # Format correctly depending on if it's a number or a state string
                     if isinstance(val, str):
                         self.learning_button_map[key]["val_label"].configure(text=val)
                     else:
@@ -277,13 +313,16 @@ class GameControllerTab:
                 found = False
                 for name, ctrl in self.controller_map.items():
                     if ctrl.guid == guid:
-                        self.controller_combo.set(name); self._on_controller_select(None); found = True; break
+                        self.controller_combo.set(name)
+                        self._on_controller_select(None)
+                        found = True
+                        break
                 if not found: self.controller_combo.set("")
             else:
                 for key in ["vx", "vy", "omega"]:
                     if self.learning_button_map[key]["scale_sb"]: self.learning_button_map[key]["scale_sb"].set(100)
                 self.deadzone_var.set(10)
-                self.controller_combo.set("") # Clear controller box if no assignment exists
+                self.controller_combo.set("") 
         except: pass
 
     def _on_tree_select(self, event):
@@ -299,7 +338,6 @@ class GameControllerTab:
         for item in self.tree.get_children(): self.tree.delete(item)
         for r_id, info in self.assignments.items():
             c_id = info['id']
-            # FIX: Force evaluation to strict Boolean to prevent infinite UI redraw loops
             is_connected = bool(c_id is not None and self.manager.get_controller(c_id) is not None)
             
             self._last_connection_states[r_id] = is_connected
@@ -349,6 +387,10 @@ class GameControllerTab:
                     print(f"Auto-reconnected Robot {r_id} to Controller {new_id} (Idx {idx})")
                     info['id'] = new_id
                     ui_needs_update = True
+                    
+                    reconnected_ctrl = self.manager.get_controller(new_id)
+                    if reconnected_ctrl:
+                        self._apply_saved_mappings(reconnected_ctrl, info.get('mappings', {}))
         
         if ui_needs_update: self._update_assignment_list()
         return commands

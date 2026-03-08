@@ -8,6 +8,7 @@
 #include "config/robot_preferences.h"
 #include "comms/heartbeat.h"
 #include "control/safety.h"
+#include "control/pid_controller.h"
 #include "control/motors.h"
 #include "sensors/sensors.h"
 #include "comms/telemetry.h"
@@ -99,29 +100,23 @@ void controlTask(void *pvParameters) {
         xTaskNotifyWait(0x00, ULONG_MAX, &notificationValue, xTimeToWait);
         
         // Reset the window timer to right NOW
-        xLastWakeTime = xTaskGetTickCount(); 
+        xLastWakeTime = xTaskGetTickCount();
 
-        // 1. Safely Read IMUs
-        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            // IMU Reads go here...
-            xSemaphoreGive(i2cMutex);
-        }
+        // 1. update IMU readings        
+        updateIMUs(); 
 
         // 2. Safely Get Target States
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            // ADD !isCalibrationRequired() to the enable condition
             enabled = motorsEnabled && !estopActive && !sequenceActive && !waitingForConfirmation && !isCalibrationRequired();
             xSemaphoreGive(stateMutex);
         }
 
         // 3. Command Hardware
         if (enabled) {
-            executeMotorCommands();
+            updateStabilizer();
         } else {
             stopMotors(); 
         }
-        
-        updateMotorLoop();
     }
 }
 

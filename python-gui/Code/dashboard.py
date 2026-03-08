@@ -47,7 +47,6 @@ class Dashboard:
         self.root.after(200, self._update_status_bar)
 
     def _read_serial_loop(self):
-        """Routes binary packets to their respective handlers"""
         if serial_comm.is_connected():
             try:
                 raw_data = serial_comm.read_all() 
@@ -65,26 +64,26 @@ class Dashboard:
 
     def _handle_telemetry(self, data):
         if not self.robot_state.exists(data.robot_id): return
+        
         self.robot_state.mark_seen(data.robot_id)
+        
+        # --- NEW: Store the actual reported mode from the robot ---
+        robot = self.robot_state.get_robot(data.robot_id)
+        robot.telemetry_mode = data.mode
+        
         self.root.after(0, lambda: self.live_tab.update_telemetry(data))
         self.root.after(0, lambda: self.game_tab.update_available_robots(
             self.robot_state.get_all_robot_ids()
         ))
         
-        # Update the state manager using the raw status code directly
         self.robot_state.set_status(data.robot_id, data.status)
 
     def _handle_confirmation_request(self, req):
         """Shows a popup dialog for robot confirmation steps"""
         if not self.robot_state.exists(req.robot_id): return
-        
-        # Debounce: Prevent spawning multiple windows if the robot spams the request
         if not hasattr(self, 'active_dialogs'):
             self.active_dialogs = set()
-            
-        # If a dialog is already open for this robot, ignore subsequent packets
-        if req.robot_id in self.active_dialogs:
-            return
+        if req.robot_id in self.active_dialogs: return
             
         self.active_dialogs.add(req.robot_id)
         
@@ -96,11 +95,7 @@ class Dashboard:
 
         dialog = tk.Toplevel(self.root)
         dialog.title(f"Robot {req.robot_id} Request")
-        
-        # Force the window to the front and grab focus
         dialog.attributes('-topmost', True) 
-        
-        # Ensure the lock is cleared if the user clicks the standard window 'X' button
         dialog.protocol("WM_DELETE_WINDOW", lambda: on_dialog_close(False))
         
         tk.Label(dialog, text=f"Robot {req.robot_id} asks:\n{req.message}", padx=20, pady=20, font=("Arial", 11)).pack()
@@ -108,30 +103,25 @@ class Dashboard:
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=10)
         
-        # Color-coded buttons
         tk.Button(btn_frame, text="Approve", command=lambda: on_dialog_close(True), width=10, bg="#2ecc71", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=10)
         tk.Button(btn_frame, text="Deny", command=lambda: on_dialog_close(False), width=10, bg="#e74c3c", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=10)
-        
         dialog.focus_force()
 
     def _load_config(self):
         default = {"com_port": "", "baud_rate": BAUD_RATE, "assignments": {}, "auto_reconnect": False}
         if os.path.exists("config.json"):
             try:
-                with open("config.json", 'r') as f:
-                    return json.load(f)
+                with open("config.json", 'r') as f: return json.load(f)
             except: pass
         return default
     
     def _save_config(self):
-        """Saves current configurations to the config.json file"""
         self.app_config["com_port"] = self.config_tab.get_selected_port()
         self.app_config["baud_rate"] = self.config_tab.get_selected_baud()
         self.app_config["auto_reconnect"] = self.config_tab.is_auto_reconnect_enabled()
         self.app_config["assignments"] = self.game_tab.get_assignment_guids()
         try:
-            with open("config.json", 'w') as f:
-                json.dump(self.app_config, f, indent=4)
+            with open("config.json", 'w') as f: json.dump(self.app_config, f, indent=4)
             messagebox.showinfo("Success", "Configuration saved successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save config: {e}")
@@ -139,62 +129,39 @@ class Dashboard:
     def _create_tabs(self):
         self.tabs = ttk.Notebook(self.root)
         self.tabs.pack(expand=True, fill=tk.BOTH)
-        
-        # Pass the auto_reconnect state to the config tab
-        self.config_tab = ConfigTab(
-            self.tabs, 
-            None, 
-            self.app_config.get("com_port"), 
-            self.app_config.get("baud_rate", BAUD_RATE),
-            self.app_config.get("auto_reconnect", False)
-        )
+        self.config_tab = ConfigTab(self.tabs, None, self.app_config.get("com_port"), self.app_config.get("baud_rate", BAUD_RATE), self.app_config.get("auto_reconnect", False))
         self.tabs.add(self.config_tab.get_frame(), text="Configuration")
-        
         self.live_tab = LiveViewTab(self.tabs, self.robot_state)
         self.tabs.add(self.live_tab.get_frame(), text="Live View")
-        
-        # Pass the save callback to the game tab so the save button appears
         self.game_tab = GameControllerTab(self.tabs, self._save_config, self.app_config.get("assignments"))
         self.tabs.add(self.game_tab.get_frame(), text="Game Controller")
 
     def _create_status_bar(self):
-        """Builds the UI elements for the bottom status bar"""
         self.status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, padding=(2, 2))
         self.status_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        
         self.serial_status_lbl = ttk.Label(self.status_frame, text="Serial: Disconnected", font=("Arial", 9, "bold"))
         self.serial_status_lbl.pack(side=tk.LEFT, padx=10)
-        
         ttk.Separator(self.status_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
-        
         self.robot_status_container = ttk.Frame(self.status_frame)
         self.robot_status_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
     def _update_status_bar(self):
-        """Periodically refreshes the text on the status bar"""
-        # 1. Update Serial Status
         if serial_comm.is_connected():
             self.serial_status_lbl.config(text="Serial: CONNECTED", foreground="green")
         else:
             self.serial_status_lbl.config(text="Serial: DISCONNECTED", foreground="red")
         
-        # 2. Update Robot + Controller Assignments and their States
         assignments = self.game_tab.get_assignment_names()
-        
-        for widget in self.robot_status_container.winfo_children():
-            widget.destroy()
+        for widget in self.robot_status_container.winfo_children(): widget.destroy()
             
         if not assignments:
             ttk.Label(self.robot_status_container, text="No Robots Assigned").pack(side=tk.LEFT)
         else:
             for idx, (r_id, c_name) in enumerate(assignments.items()):
-                if idx > 0:
-                    ttk.Label(self.robot_status_container, text="  |  ").pack(side=tk.LEFT, padx=5)
-                
+                if idx > 0: ttk.Label(self.robot_status_container, text="  |  ").pack(side=tk.LEFT, padx=5)
                 ttk.Label(self.robot_status_container, text=f"R{r_id}: ").pack(side=tk.LEFT)
                 robot = self.robot_state.get_robot(r_id)
                 
-                # Dynamic colored label based on exact telemetry state
                 if not robot.is_connected(timeout_sec=0.5):
                     r_state, r_color = "OFFLINE", "gray"
                 elif robot.estop_active:
@@ -202,24 +169,22 @@ class Dashboard:
                 elif robot.status_code == STATUS_CALIBRATION_REQUIRED:
                     r_state, r_color = "NEEDS CALIB", "purple"
                 elif robot.status_code == STATUS_WAITING_CONFIRM:
-                    r_state, r_color = "CONFIRM?", "#d35400" # Orange
+                    r_state, r_color = "CONFIRM?", "#d35400"
                 elif robot.status_code == STATUS_RUNNING_SEQUENCE:
                     r_state, r_color = "SEQUENCE", "blue"
                 elif robot.status_code == STATUS_NORMAL:
                     if robot.armed:
-                        r_state, r_color = "ARMED", "green"
+                        # Display whether it is Stabilized or Direct
+                        mode_text = "STAB" if robot.telemetry_mode == 1 else "DIR"
+                        r_state, r_color = f"ARMED ({mode_text})", "green"
                     else:
-                        r_state, r_color = "DISARMED", "#f39c12" # Orange
+                        r_state, r_color = "DISARMED", "#f39c12"
                 else:
                     r_state, r_color = "UNKNOWN", "gray"
                 
                 ttk.Label(self.robot_status_container, text=f"[{r_state}]", foreground=r_color, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
                 
-                if c_name == "Disconnected":
-                    c_text, c_color = "[No Gamepad]", "red"
-                else:
-                    c_text, c_color = f" [{c_name}]", "blue"
-                    
+                c_text, c_color = ("[No Gamepad]", "red") if c_name == "Disconnected" else (f" [{c_name}]", "blue")
                 ttk.Label(self.robot_status_container, text=c_text, foreground=c_color).pack(side=tk.LEFT)
             
         self.root.after(200, self._update_status_bar)
@@ -242,26 +207,25 @@ class Dashboard:
         
         for r_id, controls in all_commands.items():
             robot = self.robot_state.get_robot(r_id)
-            
             c_id = self.game_tab.assignments.get(r_id, {}).get('id')
             ctrl = self.joy_manager.get_controller(c_id) if c_id is not None else None
             
-            # --- Consume Intercepted Events from RobotState ---
+            # --- NEW: Process and CONSUME the mode toggle ---
+            if controls.get("toggle_mode"):
+                robot.toggle_control_mode()
+                if ctrl:
+                    ctrl.clear_mode_toggle() # Explicitly lower the flag
+            
             evt = robot.consume_rumble()
             if evt and ctrl:
-                if evt == "ESTOP_CLEARED":
-                    ctrl.rumble(0.2, 0.2, 300) 
-                elif evt == "ESTOP_REJECTED":
-                    ctrl.rumble(1.0, 1.0, 600) 
-                elif evt == "DISARM":
-                    ctrl.rumble(0.8, 0.2, 400) 
+                if evt == "ESTOP_CLEARED": ctrl.rumble(0.2, 0.2, 300) 
+                elif evt == "ESTOP_REJECTED": ctrl.rumble(1.0, 1.0, 600) 
+                elif evt == "DISARM": ctrl.rumble(0.8, 0.2, 400) 
             
-            # --- E-Stop Handler ---
             if controls["estop"] and not robot.estop_active:
                 packet_sender.send_estop(r_id)
                 if ctrl: ctrl.rumble(0.8, 0.2, 400) 
                 
-            # --- Multi-Stage Arm/E-Stop Clear Logic ---
             if self.robot_state.handle_arm_button(r_id, controls["arm"]):
                 if robot.estop_active:
                     packet_sender.send_arm(r_id)
@@ -274,31 +238,27 @@ class Dashboard:
                         robot.armed = True
                         if ctrl: ctrl.rumble(0.1, 0.8, 300) 
 
-            # --- CANCEL CRUISE CONTROL ON DISARM/ESTOP ---
             if not robot.armed or robot.estop_active or controls["estop"]:
-                if ctrl:
-                    ctrl.cancel_cruise()
-                # Override the dictionary for this loop so UI and robot update instantly
+                if ctrl: ctrl.cancel_cruise()
                 controls["cruise_state"] = "DISABLED"
                 controls["cruise_val"] = 0.0
                         
-            # --- UPDATE CRUISE CONTROL STATE ---
             robot.set_cruise_control(controls.get("cruise_state") == "ENABLED", controls.get("cruise_val", 0.0))
             
             # --- Transmission Handler ---
             if robot.should_send_control():
-                packet_sender.send_control(r_id, controls["vx"], controls["vy"], controls["omega"])
+                packet_sender.send_control(r_id, robot.control_mode, controls["vx"], controls["vy"], controls["omega"])
             else:
-                packet_sender.send_control(r_id, 0.0, 0.0, 0.0)
+                packet_sender.send_control(r_id, robot.control_mode, 0.0, 0.0, 0.0)
                 
         self.root.after(CONTROL_UPDATE_RATE_MS, self._update_game_controller)
 
     def _periodic_control_loop(self):
         active = getattr(self, 'controlled_robot_ids', [])
-        # Deadlock Fix: Always broadcast to a standard block of robots to force discovery
         for r_id in range(1, 4): 
             if r_id not in active:
-                packet_sender.send_control(r_id, 0.0, 0.0, 0.0)
+                robot = self.robot_state.get_robot(r_id)
+                packet_sender.send_control(r_id, robot.control_mode, 0.0, 0.0, 0.0)
         self.root.after(CONTROL_UPDATE_RATE_MS, self._periodic_control_loop)
 
     def cleanup(self):

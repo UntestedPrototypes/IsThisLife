@@ -14,6 +14,11 @@ class RobotState:
         self._prev_arm_input = False
         self.cruise_active = False
         self.cruise_speed = 0.0
+        
+        # --- NEW: Mode Tracking ---
+        self.control_mode = 0   # The mode we are commanding (0=Direct, 1=Stabilized)
+        self.telemetry_mode = 0 # The mode the robot confirms it is currently in
+        
         # Initialize timestamp to now so it doesn't instantly timeout when manually added
         self.last_telemetry_time = time.time()
 
@@ -27,6 +32,11 @@ class RobotState:
     def is_connected(self, timeout_sec=2.0):
         """Returns True if a packet was received within the timeout period"""
         return (time.time() - self.last_telemetry_time) < timeout_sec
+
+    def toggle_control_mode(self):
+        """Flips the commanded control mode between 0 and 1"""
+        self.control_mode = 1 if self.control_mode == 0 else 0
+        return self.control_mode
 
     def set_status(self, raw_status):
         """Updates internal state splitting the E-STOP bit from the logical state"""
@@ -54,6 +64,7 @@ class RobotState:
             self.armed = False
             self.cruise_active = False
             self.cruise_speed = 0.0
+            self.control_mode = 0
 
     def request_estop_clear(self):
         self.pending_estop_clear = True
@@ -71,6 +82,7 @@ class RobotState:
             self.armed = False
             self.cruise_active = False
             self.cruise_speed = 0.0
+            self.control_mode = 0
     
     def set_cruise_control(self, active, speed):
         if self.estop_active or not self.armed:

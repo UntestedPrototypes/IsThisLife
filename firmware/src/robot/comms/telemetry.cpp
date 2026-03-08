@@ -5,6 +5,7 @@
 #include "../config/robot_preferences.h"
 #include "../utils/debug.h"
 #include "../control/safety.h"
+#include "../control/pid_controller.h"
 #include "../logic/confirmation.h"
 #include "../logic/sequence.h"
 #include "../sensors/sensors.h"
@@ -22,7 +23,8 @@ void sendTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
     Tele.heartbeat = hb;
 
     Tele.acked_type = type;
-    
+    Tele.mode = getControlMode();
+
     uint8_t op_state = STATUS_NORMAL;
     
     // 1. Determine Logical Operational State
@@ -34,13 +36,6 @@ void sendTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
         op_state = STATUS_CALIBRATION_REQUIRED;
     } else {
         op_state = STATUS_NORMAL;
-    }
-    
-    // 2. Apply E-STOP Bitmask safely over the top
-    if (isEstopActive()) {
-        Tele.status = op_state | STATUS_FLAG_ESTOP;
-    } else {
-        Tele.status = op_state;
     }
     
     // 2. Apply E-STOP Bitmask safely over the top
@@ -80,9 +75,10 @@ void sendTelemetry(uint8_t type, uint32_t hb, uint16_t latency_ms) {
 
     esp_err_t res = esp_now_send(robotSettings.controller_mac, (uint8_t*)&Tele, sizeof(Tele));
     
-    DEBUG_PKT_PRINTF("Sent Telemetry: Type=%d, Status=0x%02X, Battery=%dmV, MotorTemp=%dC, Errors=0x%02X, Latency=%dms, IMU=[%.2f, %.2f, %.2f], Secondary IMU=[%.2f, %.2f, %.2f], ESP_NOW Result=%d\n",
+    DEBUG_PKT_TX_PRINTF("Sent Telemetry: Type=%d, Status=0x%02X, Mode=%d, Battery=%dmV, MotorTemp=%dC, Errors=0x%02X, Latency=%dms, IMU=[%.2f, %.2f, %.2f], Secondary IMU=[%.2f, %.2f, %.2f], ESP_NOW Result=%d\n",
         Tele.acked_type,
         Tele.status,
+        Tele.mode, 
         Tele.battery_mv,
         Tele.motor_temp,
         Tele.error_flags,
