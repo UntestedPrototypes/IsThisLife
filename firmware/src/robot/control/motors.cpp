@@ -8,9 +8,9 @@
 #include <Arduino.h>
 
 // Cleaned up initialization without the old PID/angle arguments
-MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, 0.10f, 0.10f);
+MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, 0.08f, 0.08f);
 Servo_ST3215 pendServos(1, 2);
-const int MAX_ST3215_SPEED = 3400; 
+const int MAX_ST3215_SPEED = 3400;
 
 static float current_normVx = 0.0f;
 static float current_normVy = 0.0f;
