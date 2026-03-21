@@ -74,23 +74,35 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             safeKey[16] = '\0';
             String key = String(safeKey);
             
-            if (key == "kp_pitch") robotSettings.kp_pitch = setPkt.value;
-            else if (key == "ki_pitch") robotSettings.ki_pitch = setPkt.value;
-            else if (key == "kd_pitch") robotSettings.kd_pitch = setPkt.value;
-            else if (key == "kp_roll") robotSettings.kp_roll = setPkt.value;
-            else if (key == "ki_roll") robotSettings.ki_roll = setPkt.value;
-            else if (key == "kd_roll") robotSettings.kd_roll = setPkt.value;
-            else if (key == "pitch_dir") robotSettings.pitch_dir = setPkt.value;
-            else if (key == "roll_dir") robotSettings.roll_dir = setPkt.value;
+            bool save_pid_needed = false;
+
+            // Catch Volatile flags first
+            if (key == "dev_mode") {
+                robotSettings.dev_mode = (setPkt.value == 1.0f); // 1.0 = true, 0.0 = false
+                setCalibrationRequired(!robotSettings.dev_mode); // If dev_mode is true, bypass calibration requirement
+            } 
+            // Otherwise parse permanent PID flags
+            else if (key == "kp_pitch") { robotSettings.kp_pitch = setPkt.value; save_pid_needed = true; }
+            else if (key == "ki_pitch") { robotSettings.ki_pitch = setPkt.value; save_pid_needed = true; }
+            else if (key == "kd_pitch") { robotSettings.kd_pitch = setPkt.value; save_pid_needed = true; }
+            else if (key == "kp_roll")  { robotSettings.kp_roll = setPkt.value; save_pid_needed = true; }
+            else if (key == "ki_roll")  { robotSettings.ki_roll = setPkt.value; save_pid_needed = true; }
+            else if (key == "kd_roll")  { robotSettings.kd_roll = setPkt.value; save_pid_needed = true; }
+            else if (key == "pitch_dir"){ robotSettings.pitch_dir = setPkt.value; save_pid_needed = true; }
+            else if (key == "roll_dir") { robotSettings.roll_dir = setPkt.value; save_pid_needed = true; }
             
-            savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
-                            robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
-                            robotSettings.pitch_dir, robotSettings.roll_dir);             
+            // Only burn to flash if it was a permanent variable
+            if (save_pid_needed) {
+                savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
+                                robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                                robotSettings.pitch_dir, robotSettings.roll_dir);             
+            }
             xSemaphoreGive(stateMutex);
         }
         return;
     }
 
+    // --- GET SETTING ---
     if (pkt_type == PACKET_GET_SETTING && len >= sizeof(GetSettingPacket)) {
         GetSettingPacket getPkt{};
         memcpy(&getPkt, data, sizeof(getPkt));
@@ -104,7 +116,8 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             bool found = true;
 
             xSemaphoreTake(stateMutex, portMAX_DELAY);
-            if (key == "kp_pitch") value = robotSettings.kp_pitch;
+            if (key == "dev_mode") value = robotSettings.dev_mode ? 1.0f : 0.0f; // Translate bool to float
+            else if (key == "kp_pitch") value = robotSettings.kp_pitch;
             else if (key == "ki_pitch") value = robotSettings.ki_pitch;
             else if (key == "kd_pitch") value = robotSettings.kd_pitch;
             else if (key == "kp_roll") value = robotSettings.kp_roll;

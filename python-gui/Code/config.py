@@ -49,5 +49,6 @@ LEARNING_THRESHOLD = 0.3  # Axis movement threshold for detection
 DEFAULT_TUNABLE_SETTINGS = [
     "kp_pitch", "ki_pitch", "kd_pitch", 
     "kp_roll", "ki_roll", "kd_roll", 
-    "pitch_dir", "roll_dir"
+    "pitch_dir", "roll_dir",
+    "dev_mode"
 ]

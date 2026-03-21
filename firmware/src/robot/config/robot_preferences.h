@@ -27,6 +27,8 @@ struct RobotSettings {
     float d_alpha;
     float out_alpha;
     float deadband;
+
+    bool dev_mode;
 };
 
 extern RobotSettings robotSettings;

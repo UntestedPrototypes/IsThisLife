@@ -61,8 +61,11 @@ void loadAllPreferences() {
     dbg_pkt_rx  = prefs.getBool("dbg_prx", false); // <--- Load RX config
     dbg_pkt_tx  = prefs.getBool("dbg_ptx", false); // <--- Load TX config
 
+    
     prefs.end(); 
-
+    
+    robotSettings.dev_mode = false;
+    
     Serial.printf("  -> Robot ID: %u\n", robotSettings.robot_id);
     Serial.printf("  -> Controller MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", 
                   robotSettings.controller_mac[0], robotSettings.controller_mac[1], 
