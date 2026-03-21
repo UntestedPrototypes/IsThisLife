@@ -11,6 +11,7 @@
 #include "../logic/confirmation.h"
 #include "../logic/sequence.h"
 #include <Arduino.h>
+#include <esp_now.h>
 #include <string.h>
 
 void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
@@ -38,6 +39,7 @@ void onReceive(const uint8_t *mac, const uint8_t *data, int len) {
 void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     uint8_t pkt_type = data[0];
     
+    // --- CONFIRMATIONS ---
     if (pkt_type == PACKET_CONFIRM && len >= sizeof(ConfirmPacket)) {
         ConfirmPacket confirm{};
         memcpy(&confirm, data, sizeof(confirm));
@@ -49,6 +51,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
         return;
     }
     
+    // --- SEQUENCES ---
     if (pkt_type == PACKET_START_SEQUENCE && len >= sizeof(StartSequencePacket)) {
         StartSequencePacket seq{};
         memcpy(&seq, data, sizeof(seq));
@@ -59,7 +62,73 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
         }
         return;
     }
+
+    // --- SET SETTING ---
+    if (pkt_type == PACKET_SET_SETTING && len >= sizeof(SetSettingPacket)) {
+        SetSettingPacket setPkt{};
+        memcpy(&setPkt, data, sizeof(setPkt));
+        if (setPkt.robot_id == robotSettings.robot_id || setPkt.robot_id == 0) {
+            xSemaphoreTake(stateMutex, portMAX_DELAY);
+            char safeKey[17];
+            strncpy(safeKey, setPkt.key, 16);
+            safeKey[16] = '\0';
+            String key = String(safeKey);
+            
+            if (key == "kp_pitch") robotSettings.kp_pitch = setPkt.value;
+            else if (key == "ki_pitch") robotSettings.ki_pitch = setPkt.value;
+            else if (key == "kd_pitch") robotSettings.kd_pitch = setPkt.value;
+            else if (key == "kp_roll") robotSettings.kp_roll = setPkt.value;
+            else if (key == "ki_roll") robotSettings.ki_roll = setPkt.value;
+            else if (key == "kd_roll") robotSettings.kd_roll = setPkt.value;
+            else if (key == "pitch_dir") robotSettings.pitch_dir = setPkt.value;
+            else if (key == "roll_dir") robotSettings.roll_dir = setPkt.value;
+            
+            savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
+                            robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                            robotSettings.pitch_dir, robotSettings.roll_dir);             
+            xSemaphoreGive(stateMutex);
+        }
+        return;
+    }
+
+    if (pkt_type == PACKET_GET_SETTING && len >= sizeof(GetSettingPacket)) {
+        GetSettingPacket getPkt{};
+        memcpy(&getPkt, data, sizeof(getPkt));
+        if (getPkt.robot_id == robotSettings.robot_id) {
+            char safeKey[17];
+            strncpy(safeKey, getPkt.key, 16);
+            safeKey[16] = '\0';
+            String key = String(safeKey);
+
+            float value = 0.0f;
+            bool found = true;
+
+            xSemaphoreTake(stateMutex, portMAX_DELAY);
+            if (key == "kp_pitch") value = robotSettings.kp_pitch;
+            else if (key == "ki_pitch") value = robotSettings.ki_pitch;
+            else if (key == "kd_pitch") value = robotSettings.kd_pitch;
+            else if (key == "kp_roll") value = robotSettings.kp_roll;
+            else if (key == "ki_roll") value = robotSettings.ki_roll;
+            else if (key == "kd_roll") value = robotSettings.kd_roll;
+            else if (key == "pitch_dir") value = robotSettings.pitch_dir;
+            else if (key == "roll_dir") value = robotSettings.roll_dir;
+            else found = false;
+            xSemaphoreGive(stateMutex);
+
+            if (found) {
+                SettingResponsePacket resp{};
+                resp.type = PACKET_SETTING_RESPONSE;
+                resp.robot_id = robotSettings.robot_id;
+                resp.heartbeat = getPkt.heartbeat;
+                strncpy(resp.key, safeKey, 16);
+                resp.value = value;
+                esp_now_send(robotSettings.controller_mac, (uint8_t*)&resp, sizeof(resp));
+            }
+        }
+        return;
+    }
     
+    // --- STANDARD CONTROL PACKET PROCESSING ---
     if (len < sizeof(ControlPacket)) return;
     
     ControlPacket pkt{};
@@ -67,38 +136,28 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
     if (pkt.robot_id != 0 && pkt.robot_id != robotSettings.robot_id) return;
 
     xSemaphoreTake(stateMutex, portMAX_DELAY);
-    
     uint32_t now = millis();
     recordHeartbeat(now);
 
     switch(pkt.type) {
         case PACKET_DISCOVER:
-            DEBUG_PKT_RX_PRINTLN("DEBUG: DISCOVER received");
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
-            
         case PACKET_ESTOP:
-            DEBUG_PKT_RX_PRINTLN("DEBUG: E-STOP received");
             cancelConfirmation();
             stopSequence();
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
-            
         case PACKET_ESTOP_CLEAR:
-            DEBUG_PKT_RX_PRINTLN("DEBUG: E-STOP cleared / ARM received");
             clearEstop();
             sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
             break;
-            
         case PACKET_CONTROL:
-            // Assuming your pkt mapping is setup according to previous steps, including mode
-            DEBUG_PKT_RX_PRINTF("DEBUG: CONTROL packet received - mode=%d vx=%d vy=%d omega=%d\n", pkt.mode, pkt.vx, pkt.vy, pkt.omega);
             controlPacketCount++;
             if (controlPacketCount >= robotSettings.telemetry_interval) {
                 sendTelemetry(pkt.type, pkt.heartbeat, pkt.timestamp_ms);
                 controlPacketCount = 0;
             }
-
             if (!isSequenceActive() && !waitingForConfirmation && !isEstopActive() && heartbeatValid() && !isCalibrationRequired()) {
                 motorsEnabled = true;
                 setControlMode(pkt.mode);

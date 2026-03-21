@@ -1,5 +1,5 @@
 {
-    "com_port": "COM3",
+    "com_port": "COM26",
     "baud_rate": 115200,
     "assignments": {
         "3": {

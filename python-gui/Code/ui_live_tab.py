@@ -1,5 +1,5 @@
 """
-Live view of robot status, sequence control, and dual-IMU telemetry
+Live view of robot status, sequence control, and telemetry
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -7,8 +7,6 @@ from config import *
 import packet_sender
 
 class LiveViewTab:
-    """Tab for monitoring live robot telemetry including Main and Pendulum IMUs"""
-    
     def __init__(self, notebook, robot_state_manager):
         self.frame = ttk.Frame(notebook)
         self.robot_state = robot_state_manager
@@ -76,13 +74,12 @@ class LiveViewTab:
             lbl.grid(row=row, column=col*2 + 1, sticky="w", padx=(0, 10))
             widgets[key] = lbl
 
-        # --- Updated Stats Grid with Mode ---
         add_stat("hb",   "Heartbeat:", 0, 0)
         add_stat("batt", "Battery:",   0, 1)
         add_stat("rtt",  "RTT:",       0, 2)
         add_stat("temp", "Temp:",      1, 0)
         add_stat("err",  "Error:",     1, 1)
-        add_stat("mode", "Mode:",      1, 2) # <-- NEW
+        add_stat("mode", "Mode:",      1, 2)
 
         ttk.Separator(lf, orient='horizontal').pack(fill='x', padx=20, pady=5)
         imu_frame = ttk.Frame(lf)
@@ -100,8 +97,6 @@ class LiveViewTab:
         widgets["cal_pend"] = ttk.Label(imu_frame, text="(G:0 A:0 M:0)", font=("Consolas", 8), foreground="gray")
         widgets["cal_pend"].grid(row=1, column=2, sticky="w")
         
-        self.robot_widgets[robot_id] = widgets
-        
         ttk.Separator(lf, orient='horizontal').pack(fill='x', padx=5, pady=10)
         control_frame = ttk.Frame(lf)
         control_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -111,7 +106,9 @@ class LiveViewTab:
             btn = ttk.Button(control_frame, text=name, command=lambda r=robot_id, s=seq_id: self._start_sequence(r, s))
             btn.grid(row=i // 3, column=i % 3, padx=3, pady=2, sticky="ew")
             control_frame.columnconfigure(i % 3, weight=1)
-    
+
+        self.robot_widgets[robot_id] = widgets
+
     def update_telemetry(self, data):
         from config import STATUS_FLAG_ESTOP, STATUS_STATE_MASK, \
                            STATUS_NORMAL, STATUS_WAITING_CONFIRM, \
@@ -156,7 +153,6 @@ class LiveViewTab:
         widgets["rtt"].configure(text=f"{data.latency_ms} ms")
         widgets["err"].configure(text=f"0x{data.error_flags:02X}", foreground="red" if data.error_flags != 0 else "black")
 
-        # --- Update Mode UI ---
         mode_text = "STABILIZED" if data.mode == 1 else "DIRECT"
         widgets["mode"].configure(text=mode_text, foreground="blue" if data.mode == 1 else "black")
 
@@ -180,8 +176,8 @@ class LiveViewTab:
             else:
                 widgets["imu_main"].configure(foreground="black")
                 widgets["imu_pend"].configure(foreground="black")
+                
         self.frame.after(100, self._update_ui_loop)
 
     def _start_sequence(self, robot_id, seq_id):
         packet_sender.send_start_sequence(robot_id, seq_id)
-        print(f"Sent sequence {seq_id} to Robot {robot_id}")

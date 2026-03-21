@@ -48,9 +48,10 @@ void handleSerialCommands() {
 
         Serial.printf("Pitch PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
                   robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, robotSettings.pitch_dir);
-    Serial.printf("Roll  PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
-                  robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir);
-            
+        Serial.printf("Roll  PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
+                  robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir); 
+        Serial.printf("Filters   [D_Alpha:%.3f Out_Alpha:%.3f Deadband:%.3f]\n", 
+                  robotSettings.d_alpha, robotSettings.out_alpha, robotSettings.deadband);
         Serial.printf("Debug General: %s\n", dbg_general ? "ON" : "OFF");
         Serial.printf("Debug IMU: %s\n", dbg_imu ? "ON" : "OFF");
         Serial.printf("Debug Pkt RX: %s\n", dbg_pkt_rx ? "ON" : "OFF"); // <--- Split view
@@ -68,6 +69,7 @@ void handleSerialCommands() {
         Serial.println("  SET_ENC <min> <max> - Set Encoder limits");
         Serial.println("  SET_PID_PITCH <P> <I> <D> <DIR> - Set Pitch constants");
         Serial.println("  SET_PID_ROLL  <P> <I> <D> <DIR> - Set Roll constants");
+        Serial.println("  SET_FILTER <D_ALPHA> <OUT_ALPHA> <DEADBAND> - Set Derivative, Output smoothing (0-1), and Error Deadband");
         Serial.println("  SET_DBG_GEN <ON/OFF>- Toggle general debug messages");
         Serial.println("  SET_DBG_IMU <ON/OFF>- Toggle high-frequency IMU stream");
         Serial.println("  SET_DBG_RX <ON/OFF> - Toggle incoming packet stream");  // <--- Split CMD
@@ -147,9 +149,21 @@ void handleSerialCommands() {
             Serial.println("ERROR: Invalid format. Use: SET_PID_ROLL <P> <I> <D> <DIR>");
         }
     }
-    else if (cmd == "SET_PID_PITCH") {
-        // Usage: SET_PID_PITCH <P> <I> <D> <DIR>
-        // Logic to parse args and call savePidSettings(...)
+   else if (cmd == "SET_FILTER") {
+        float d_alpha, out_alpha, deadband;
+        if (sscanf(args.c_str(), "%f %f %f", &d_alpha, &out_alpha, &deadband) == 3) {
+            // Constrain alpha values between 0.0 and 1.0
+            d_alpha = constrain(d_alpha, 0.0f, 1.0f);
+            out_alpha = constrain(out_alpha, 0.0f, 1.0f);
+            
+            // Prevent negative deadband
+            if (deadband < 0.0f) deadband = 0.0f;
+            
+            saveFilterSettings(d_alpha, out_alpha, deadband);
+            Serial.printf("SUCCESS: Filters updated to D_ALPHA:%.3f OUT_ALPHA:%.3f DEADBAND:%.3f\n", d_alpha, out_alpha, deadband);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_FILTER <D_ALPHA> <OUT_ALPHA> <DEADBAND>");
+        }
     }
     else if (cmd == "SET_DBG_GEN") {
         bool state = (args == "ON");

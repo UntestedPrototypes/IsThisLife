@@ -9,10 +9,11 @@ import time
 
 from config import *
 from robot_state import RobotStateManager
-from telemetry_parser import TelemetryParser, TelemetryData, ConfirmRequest
+from telemetry_parser import TelemetryParser, TelemetryData, ConfirmRequest, SettingResponse
 from ui_config_tab import ConfigTab
 from ui_live_tab import LiveViewTab
 from ui_game_tab import GameControllerTab
+from ui_tuning_tab import TuningTab  # <--- NEW TAB IMPORT
 import joystick_control
 import packet_sender
 import serial_comm
@@ -57,6 +58,8 @@ class Dashboard:
                             self._handle_telemetry(pkt)
                         elif isinstance(pkt, ConfirmRequest):
                             self._handle_confirmation_request(pkt)
+                        elif isinstance(pkt, SettingResponse):
+                            self.robot_state.update_fetched_setting(pkt.robot_id, pkt.key, pkt.value)
             except Exception as e:
                 self.config_tab.log_debug(f"Serial Read Error: {e}")
         
@@ -67,7 +70,6 @@ class Dashboard:
         
         self.robot_state.mark_seen(data.robot_id)
         
-        # --- NEW: Store the actual reported mode from the robot ---
         robot = self.robot_state.get_robot(data.robot_id)
         robot.telemetry_mode = data.mode
         
@@ -79,7 +81,6 @@ class Dashboard:
         self.robot_state.set_status(data.robot_id, data.status)
 
     def _handle_confirmation_request(self, req):
-        """Shows a popup dialog for robot confirmation steps"""
         if not self.robot_state.exists(req.robot_id): return
         if not hasattr(self, 'active_dialogs'):
             self.active_dialogs = set()
@@ -108,10 +109,22 @@ class Dashboard:
         dialog.focus_force()
 
     def _load_config(self):
-        default = {"com_port": "", "baud_rate": BAUD_RATE, "assignments": {}, "auto_reconnect": False}
+        # Merges default values with existing config.json to ensure stability
+        default = {
+            "com_port": "", 
+            "baud_rate": BAUD_RATE, 
+            "assignments": {}, 
+            "auto_reconnect": False,
+            "tunable_settings": DEFAULT_TUNABLE_SETTINGS # Fallback list
+        }
         if os.path.exists("config.json"):
             try:
-                with open("config.json", 'r') as f: return json.load(f)
+                with open("config.json", 'r') as f: 
+                    data = json.load(f)
+                    for k, v in default.items():
+                        if k not in data:
+                            data[k] = v
+                    return data
             except: pass
         return default
     
@@ -129,12 +142,19 @@ class Dashboard:
     def _create_tabs(self):
         self.tabs = ttk.Notebook(self.root)
         self.tabs.pack(expand=True, fill=tk.BOTH)
+        
         self.config_tab = ConfigTab(self.tabs, None, self.app_config.get("com_port"), self.app_config.get("baud_rate", BAUD_RATE), self.app_config.get("auto_reconnect", False))
         self.tabs.add(self.config_tab.get_frame(), text="Configuration")
+        
         self.live_tab = LiveViewTab(self.tabs, self.robot_state)
         self.tabs.add(self.live_tab.get_frame(), text="Live View")
+        
         self.game_tab = GameControllerTab(self.tabs, self._save_config, self.app_config.get("assignments"))
         self.tabs.add(self.game_tab.get_frame(), text="Game Controller")
+
+        # --- NEW TUNING TAB INITIALIZATION ---
+        self.tuning_tab = TuningTab(self.tabs, self.robot_state, self.app_config.get("tunable_settings"))
+        self.tabs.add(self.tuning_tab.get_frame(), text="Parameter Tuning")
 
     def _create_status_bar(self):
         self.status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, padding=(2, 2))
@@ -174,7 +194,6 @@ class Dashboard:
                     r_state, r_color = "SEQUENCE", "blue"
                 elif robot.status_code == STATUS_NORMAL:
                     if robot.armed:
-                        # Display whether it is Stabilized or Direct
                         mode_text = "STAB" if robot.telemetry_mode == 1 else "DIR"
                         r_state, r_color = f"ARMED ({mode_text})", "green"
                     else:
@@ -210,11 +229,10 @@ class Dashboard:
             c_id = self.game_tab.assignments.get(r_id, {}).get('id')
             ctrl = self.joy_manager.get_controller(c_id) if c_id is not None else None
             
-            # --- NEW: Process and CONSUME the mode toggle ---
             if controls.get("toggle_mode"):
                 robot.toggle_control_mode()
                 if ctrl:
-                    ctrl.clear_mode_toggle() # Explicitly lower the flag
+                    ctrl.clear_mode_toggle()
             
             evt = robot.consume_rumble()
             if evt and ctrl:
@@ -245,7 +263,6 @@ class Dashboard:
                         
             robot.set_cruise_control(controls.get("cruise_state") == "ENABLED", controls.get("cruise_val", 0.0))
             
-            # --- Transmission Handler ---
             if robot.should_send_control():
                 packet_sender.send_control(r_id, robot.control_mode, controls["vx"], controls["vy"], controls["omega"])
             else:

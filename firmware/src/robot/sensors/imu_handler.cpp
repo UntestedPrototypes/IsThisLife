@@ -124,8 +124,9 @@ static float cached_sRoll = 0.0f, cached_sPitch = 0.0f, cached_sYaw = 0.0f;
 void updateIMUs() {
     if (!sensorsReady) return;
     
-    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f;
-    float sqw = 1.0f, sqx = 0.0f, sqy = 0.0f, sqz = 0.0f;
+    // We don't need to initialize these to 1.0/0.0 anymore!
+    float qw, qx, qy, qz;
+    float sqw, sqx, sqy, sqz;
 
     // Grab the bus once and read both sensors back-to-back
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -143,6 +144,10 @@ void updateIMUs() {
                             &sqw, &sqx, &sqy, &sqz);
                             
         xSemaphoreGive(i2cMutex);
+    } else {
+        // THE LATCH FIX: If we failed to get the I2C bus, abort!
+        // This preserves the last known good values in cached_mPitch, etc.
+        return; 
     }
     
     // Do the heavy trigonometry outside the mutex lock

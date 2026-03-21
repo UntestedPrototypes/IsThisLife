@@ -65,7 +65,7 @@ class ConfigTab:
         self.log_text['yscrollcommand'] = scrollbar.set
 
         # Initial port scan
-        self.refresh_ports()
+        self.frame.after(500, self.refresh_ports)
 
     def refresh_ports(self):
         """Scan for available serial ports"""

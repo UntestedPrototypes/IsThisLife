@@ -22,14 +22,13 @@ void dispatchPacket(uint8_t robot_id, void* pkt, size_t size) {
 void sendControlCommand(uint8_t robot_id, uint8_t mode, uint16_t vx, uint16_t vy, uint16_t omega) {
     ControlPacket pkt{};
     pkt.type = PACKET_CONTROL;
-    pkt.mode = mode; // Inject the selected control mode
+    pkt.mode = mode; 
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
     pkt.vx = vx;
     pkt.vy = vy;
     pkt.omega = omega;
     pkt.timestamp_ms = millis();
-
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }
@@ -79,6 +78,28 @@ void sendStartSequence(uint8_t robot_id, uint8_t sequence_id) {
     pkt.robot_id = robot_id;
     pkt.heartbeat = heartbeatCounter;
     pkt.sequence_id = sequence_id;
+    dispatchPacket(robot_id, &pkt, sizeof(pkt));
+    heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
+}
+
+void sendSetSetting(uint8_t robot_id, const char* key, float value) {
+    SetSettingPacket pkt{};
+    pkt.type = PACKET_SET_SETTING;
+    pkt.robot_id = robot_id;
+    pkt.heartbeat = heartbeatCounter;
+    strncpy(pkt.key, key, 16);
+    pkt.value = value;
+    dispatchPacket(robot_id, &pkt, sizeof(pkt));
+    heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
+}
+
+// --- NEW GET COMMAND ---
+void sendGetSetting(uint8_t robot_id, const char* key) {
+    GetSettingPacket pkt{};
+    pkt.type = PACKET_GET_SETTING;
+    pkt.robot_id = robot_id;
+    pkt.heartbeat = heartbeatCounter;
+    strncpy(pkt.key, key, 16);
     dispatchPacket(robot_id, &pkt, sizeof(pkt));
     heartbeatCounter = (heartbeatCounter + 1) & 0xFF;
 }

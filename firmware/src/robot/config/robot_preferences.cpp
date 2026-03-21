@@ -52,6 +52,10 @@ void loadAllPreferences() {
     robotSettings.pitch_dir = prefs.getFloat("p_dir", 1.0f);
     robotSettings.roll_dir  = prefs.getFloat("r_dir", 1.0f);
 
+    robotSettings.d_alpha = prefs.getFloat("d_alpha", 0.0f);
+    robotSettings.out_alpha = prefs.getFloat("out_alpha", 0.0f);
+    robotSettings.deadband = prefs.getFloat("deadband", 0.0f);
+
     dbg_general = prefs.getBool("dbg_gen", true);
     dbg_imu     = prefs.getBool("dbg_imu", false);
     dbg_pkt_rx  = prefs.getBool("dbg_prx", false); // <--- Load RX config
@@ -123,5 +127,18 @@ void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, floa
     robotSettings.kp_pitch = kpp; robotSettings.ki_pitch = kip; robotSettings.kd_pitch = kdp;
     robotSettings.kp_roll = kpr;  robotSettings.ki_roll = kir;  robotSettings.kd_roll = kdr;
     robotSettings.pitch_dir = pdir; robotSettings.roll_dir = rdir;
+}
+
+void saveFilterSettings(float d_alpha, float out_alpha, float deadband) {
+    prefs.begin(PREF_NAMESPACE, false);
+    prefs.putFloat("d_alpha", d_alpha);
+    prefs.putFloat("out_alpha", out_alpha);
+    prefs.putFloat("deadband", deadband); // <--- ADD THIS LINE
+    prefs.end();
+
+    // Update active runtime settings immediately
+    robotSettings.d_alpha = d_alpha;
+    robotSettings.out_alpha = out_alpha;
+    robotSettings.deadband = deadband; // <--- ADD THIS LINE
 }
 #endif // ROLE_ROBOT

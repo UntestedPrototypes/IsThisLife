@@ -170,17 +170,17 @@ void systemTask(void *pvParameters) {
 
             // Set the LED mode based on priority
             if (errors != 0) {
-                setLedMode(LED_PATTERN_3_SHORT); // E.g., 3 short flashes = Hardware Error
+                setLedMode(LED_PATTERN_3_SHORT);    // E.g., 3 short flashes = Hardware Error
             } else if (isCalibrationRequired()) {
-                setLedMode(LED_BLINK_FAST);      // Rapid blinking = Calibrating
+                setLedMode(LED_PATTERN_3_LONG);     // Rapid blinking = Calibration required
             } else if (waitingForConfirmation) {
-                setLedMode(LED_PATTERN_MIX);     // Mix = Waiting for user input
+                setLedMode(LED_PATTERN_MIX);        // Mix = Waiting for user input
             } else if (sequenceActive) {
-                setLedMode(LED_BLINK_SLOW);      // Slow pulse = Running automated task
+                setLedMode(LED_BLINK_SLOW);         // Slow pulse = Running automated task
             } else if (estopActive) {
-                setLedMode(LED_PATTERN_3_LONG);  // E.g., 3 long flashes = E-STOP Active
+                setLedMode(LED_BLINK_FAST);         // E.g., 3 long flashes = E-STOP Active
             } else {
-                setLedMode(LED_SOLID);           // Solid = Normal, armed, and ready to drive
+                setLedMode(LED_OFF);                // Solid = Normal, armed, and ready to drive
             }
 
             xSemaphoreGive(stateMutex);

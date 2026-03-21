@@ -12,6 +12,7 @@ extern uint32_t lastPythonComm;
 // Functions
 void forwardTelemetryToPython(const TelemetryPacket &ack);
 void forwardConfirmRequestToPython(const RequestConfirmPacket &req);
+void forwardSettingResponseToPython(const SettingResponsePacket& pkt);
 void updatePythonConnection();
 bool isPythonConnected();
 void checkPythonTimeout();

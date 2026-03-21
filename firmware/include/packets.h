@@ -10,20 +10,21 @@ enum PacketType : uint8_t {
     PACKET_CONFIRM = 4,
     PACKET_REQUEST_CONFIRM = 5,
     PACKET_START_SEQUENCE = 6,
-    PACKET_TELEMETRY = 7
+    PACKET_TELEMETRY = 7,
+    PACKET_SET_SETTING = 8,
+    PACKET_GET_SETTING = 9,       // <--- NEW: Request a setting
+    PACKET_SETTING_RESPONSE = 10  // <--- NEW: Robot replies with setting
 };
 
 // --- Bitmasks for Status Byte ---
-#define STATUS_FLAG_ESTOP 0x80 // Bit 7: 1 = E-STOP Active
-#define STATUS_STATE_MASK 0x7F // Bits 0-6: Operational State
+#define STATUS_FLAG_ESTOP 0x80
+#define STATUS_STATE_MASK 0x7F
 
-// --- Operational States ---
 #define STATUS_NORMAL 0
 #define STATUS_WAITING_CONFIRM 2
 #define STATUS_RUNNING_SEQUENCE 3
 #define STATUS_CALIBRATION_REQUIRED 4
 
-// ========== Sequence ID Definitions ==========
 #define SEQUENCE_CALIBRATION_FULL   0
 #define SEQUENCE_CALIBRATION_GYRO   1
 #define SEQUENCE_CALIBRATION_MOTORS 2
@@ -31,26 +32,17 @@ enum PacketType : uint8_t {
 #define SEQUENCE_SENSOR_TEST        4
 #define SEQUENCE_PATH_FOLLOW        5
 
-// =================================================================
-// BASE PACKET HEADER
-// =================================================================
-// Every packet will inherently start with these 6 bytes.
 struct __attribute__((packed)) PacketHeader {
-    uint8_t type;           // PacketType enum
-    uint8_t robot_id;       // 0 = Broadcast, 1-N = Specific Robot
-    uint32_t heartbeat;     // Message counter / timestamp
+    uint8_t type;           
+    uint8_t robot_id;       
+    uint32_t heartbeat;     
 };
 
-// =================================================================
-// DERIVED PACKETS
-// =================================================================
-
-// Inherits type, robot_id, and heartbeat from PacketHeader
 struct __attribute__((packed)) ControlPacket : public PacketHeader {
-    uint8_t mode;           // 0 = Direct, 1 = Stabilized
-    uint16_t vx;            // 1000-2000 us (Throttle)
-    uint16_t vy;            // 1000-2000 us (Strafe/Steer)
-    uint16_t omega;         // 1000-2000 us (Rotation)
+    uint8_t mode;           
+    uint16_t vx;            
+    uint16_t vy;            
+    uint16_t omega;         
     uint32_t timestamp_ms;  
 };
 
@@ -82,4 +74,18 @@ struct __attribute__((packed)) ConfirmPacket : public PacketHeader {
 
 struct __attribute__((packed)) StartSequencePacket : public PacketHeader {
     uint8_t sequence_id;    
+};
+
+struct __attribute__((packed)) SetSettingPacket : public PacketHeader {
+    char key[16];           
+    float value;            
+};
+
+struct __attribute__((packed)) GetSettingPacket : public PacketHeader {
+    char key[16];           // Key to request
+};
+
+struct __attribute__((packed)) SettingResponsePacket : public PacketHeader {
+    char key[16];           // The requested key
+    float value;            // The current float value on the robot
 };

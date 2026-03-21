@@ -9,10 +9,9 @@
 void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
     if (len < 1) return;
     
-    // Sniff Robot ID to detect new connections    
     uint8_t detected_id = 0;
     if (len >= 2) {
-        detected_id = data[1]; // Always the robot_id under the new PacketHeader
+        detected_id = data[1];
     }
 
     if (detected_id > 0) {
@@ -21,7 +20,6 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
     
     uint8_t pkt_type = data[0];
     
-    // Handle confirmation request
     if (pkt_type == PACKET_REQUEST_CONFIRM && len >= sizeof(RequestConfirmPacket)) {
         RequestConfirmPacket req{};
         memcpy(&req, data, sizeof(req));
@@ -35,7 +33,6 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
         TelemetryPacket ack{};
         memcpy(&ack, data, sizeof(ack));
 
-        // <--- NEW: Added ack.mode to the parameter list
         updateRobotTelemetry(ack.robot_id, ack.heartbeat, ack.status, ack.mode, 
                         ack.battery_mv, ack.motor_temp, ack.error_flags,
                         ack.imu_calibration,
@@ -43,10 +40,16 @@ void onRobotReceive(const uint8_t *mac, const uint8_t *data, int len) {
                         ack.pend_roll, ack.pend_pitch);
 
         ack.latency_ms = 404; // Placeholder
-
-        // Forwards the raw bytes over serial. Because we updated packets.h, 
-        // sizeof(ack) now includes the mode automatically.
         forwardTelemetryToPython(ack);
+        return;
+    }
+
+    // --- NEW: Route the response back to python ---
+    if (pkt_type == PACKET_SETTING_RESPONSE && len >= sizeof(SettingResponsePacket)) {
+        SettingResponsePacket resp{};
+        memcpy(&resp, data, sizeof(resp));
+        forwardSettingResponseToPython(resp);
+        return;
     }
 }
 #endif // ROLE_CONTROLLER

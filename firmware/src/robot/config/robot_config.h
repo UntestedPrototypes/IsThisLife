@@ -28,6 +28,9 @@
 #define CHANNEL 1 
 #define LED_PIN 2
 
+// Add these to the "Default PID Values" or a similar section
+#define DEFAULT_D_ALPHA 0.8f
+#define DEFAULT_OUT_ALPHA 0.1f
 
 // --- RTOS Sync Objects ---
 extern SemaphoreHandle_t i2cMutex;

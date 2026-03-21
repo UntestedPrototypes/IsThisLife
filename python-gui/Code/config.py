@@ -16,6 +16,9 @@ PACKET_ESTOP_CLEAR = 2
 PACKET_CONFIRM = 4
 PACKET_START_SEQUENCE = 6
 PACKET_TELEMETRY = 7
+PACKET_SET_SETTING = 8
+PACKET_GET_SETTING = 9
+PACKET_SETTING_RESPONSE = 10
 
 # Default Robot ID
 DEFAULT_ROBOT_ID = 1
@@ -42,3 +45,9 @@ MAX_ROBOTS = 2
 # Joystick learning timeout
 LEARNING_TIMEOUT_SECONDS = 5.0
 LEARNING_THRESHOLD = 0.3  # Axis movement threshold for detection
+
+DEFAULT_TUNABLE_SETTINGS = [
+    "kp_pitch", "ki_pitch", "kd_pitch", 
+    "kp_roll", "ki_roll", "kd_roll", 
+    "pitch_dir", "roll_dir"
+]

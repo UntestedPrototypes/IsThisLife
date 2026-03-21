@@ -8,18 +8,22 @@
 bool python_connected = false;
 uint32_t lastPythonComm = 0;
 
-void forwardTelemetryToPython(const TelemetryPacket& ack) {
+void forwardTelemetryToPython(const TelemetryPacket& pkt) {
     uint8_t header[2] = {0xAA, 0x55};
-    Serial.write(header, 2); // Send sync bytes
-    Serial.write((uint8_t*)&ack, sizeof(TelemetryPacket)); // Send binary payload
-    Serial.flush(); 
+    Serial.write(header, 2);
+    Serial.write((const uint8_t*)&pkt, sizeof(pkt));
 }
 
 void forwardConfirmRequestToPython(const RequestConfirmPacket& req) {
-    uint8_t header[2] = {0xFF, 0xAA}; // Different header for requests
+    uint8_t header[2] = {0xFF, 0xAA};
     Serial.write(header, 2);
-    Serial.write((uint8_t*)&req, sizeof(RequestConfirmPacket));
-    Serial.flush();
+    Serial.write((const uint8_t*)&req, sizeof(req));
+}
+
+void forwardSettingResponseToPython(const SettingResponsePacket& pkt) {
+    uint8_t header[2] = {0xCC, 0x33}; // Unique sync header for Setting Responses
+    Serial.write(header, 2);
+    Serial.write((const uint8_t*)&pkt, sizeof(pkt));
 }
 
 void updatePythonConnection() {

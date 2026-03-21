@@ -5,47 +5,43 @@ import time
 from config import MAX_ROBOTS
 
 class RobotState:
-    """State for a single robot"""
     def __init__(self, robot_id):
         self.robot_id = robot_id
-        self.status_code = 0  # Tracks the raw STATUS_ constant from telemetry
+        self.status_code = 0
         self.estop_active = False
         self.armed = False
         self._prev_arm_input = False
         self.cruise_active = False
         self.cruise_speed = 0.0
         
-        # --- NEW: Mode Tracking ---
-        self.control_mode = 0   # The mode we are commanding (0=Direct, 1=Stabilized)
-        self.telemetry_mode = 0 # The mode the robot confirms it is currently in
+        self.control_mode = 0
+        self.telemetry_mode = 0
         
-        # Initialize timestamp to now so it doesn't instantly timeout when manually added
         self.last_telemetry_time = time.time()
 
         self.pending_estop_clear = False
         self.pending_estop_time = 0.0
         self.rumble_event = None
+
+        # --- NEW: Holds the latest fetched variable readings ---
+        self.fetched_settings = {}
     
     def mark_seen(self):
         self.last_telemetry_time = time.time()
         
     def is_connected(self, timeout_sec=2.0):
-        """Returns True if a packet was received within the timeout period"""
         return (time.time() - self.last_telemetry_time) < timeout_sec
 
     def toggle_control_mode(self):
-        """Flips the commanded control mode between 0 and 1"""
         self.control_mode = 1 if self.control_mode == 0 else 0
         return self.control_mode
 
     def set_status(self, raw_status):
-        """Updates internal state splitting the E-STOP bit from the logical state"""
         from config import STATUS_FLAG_ESTOP, STATUS_STATE_MASK, STATUS_NORMAL
         
         new_estop = bool(raw_status & STATUS_FLAG_ESTOP)
         self.status_code = raw_status & STATUS_STATE_MASK
         
-        # Evaluate responses to requested E-Stop clears 
         if self.pending_estop_clear:
             if not new_estop:  
                 self.rumble_event = "ESTOP_CLEARED"
@@ -54,7 +50,6 @@ class RobotState:
                 self.rumble_event = "ESTOP_REJECTED"
                 self.pending_estop_clear = False
                 
-        # Register a physical hardware E-Stop
         if new_estop and self.armed:
             self.rumble_event = "DISARM"
 
@@ -71,7 +66,6 @@ class RobotState:
         self.pending_estop_time = time.time()
         
     def consume_rumble(self):
-        """Returns the pending rumble event and clears it"""
         evt = self.rumble_event
         self.rumble_event = None
         return evt
@@ -116,18 +110,19 @@ class RobotState:
     def should_send_control(self):
         return self.armed and not self.estop_active
 
+    # --- NEW METHOD to store retrieved settings
+    def update_setting(self, key, value):
+        self.fetched_settings[key] = value
+
 
 class RobotStateManager:
-    """Manage state for multiple robots"""
     def __init__(self):
         self.robots = {}
     
     def exists(self, robot_id):
-        """Check if robot exists without creating it"""
         return robot_id in self.robots
 
     def get_robot(self, robot_id):
-        """Get robot state by ID, creating if missing (used by manual add)"""
         if robot_id not in self.robots:
             self.robots[robot_id] = RobotState(robot_id)
         return self.robots[robot_id]
@@ -135,7 +130,6 @@ class RobotStateManager:
     def get_all_robot_ids(self):
         return list(self.robots.keys())
 
-    # Forwarding methods
     def mark_seen(self, robot_id):
         if self.exists(robot_id): self.get_robot(robot_id).mark_seen()
         
@@ -166,9 +160,13 @@ class RobotStateManager:
     def handle_arm_button(self, robot_id, button_pressed):
         if not self.exists(robot_id): return False
         robot = self.get_robot(robot_id)
-        # Only return True as a one-shot trigger on the rising edge of the button press
         if button_pressed and not robot._prev_arm_input:
             robot._prev_arm_input = True
             return True
         robot._prev_arm_input = button_pressed
         return False
+        
+    # --- NEW: Forward Setting to Robot State ---
+    def update_fetched_setting(self, robot_id, key, value):
+        if self.exists(robot_id):
+            self.get_robot(robot_id).update_setting(key, value)

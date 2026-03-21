@@ -4,11 +4,12 @@
 #include "../config/robot_config.h"
 #include "../config/robot_preferences.h"
 #include "../utils/debug.h"
+#include "../sensors/imu_handler.h"
 #include "Servo_ST3215.h"
 #include <Arduino.h>
 
 // Cleaned up initialization without the old PID/angle arguments
-MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, 0.08f, 0.08f);
+MotorChannel mainMotor(MAIN_MOTOR_PIN, 1000, 2000, 1500, 500, 0, false, 0.02f, 0.02f);
 Servo_ST3215 pendServos(1, 2);
 const int MAX_ST3215_SPEED = 3400;
 
@@ -38,10 +39,28 @@ void setEncoderLimits(int32_t min_limit, int32_t max_limit) {
 
 void setMotorSpeed(float target_normVx, float target_normVy) {
     
+    float mRoll, mPitch, mYaw;
+    readMainIMU(&mRoll, &mPitch, &mYaw);
+    
+    float sRoll, sPitch, sYaw;
+    readSecondaryIMU(&sRoll, &sPitch, &sYaw);
+    
+    // Calculate the difference between the secondary pendulum and main ball
+    float rollDifference = sRoll - mRoll;
+    
+    // Block movement if difference exceeds +/- 80 degrees
+    // IMPORTANT: Depending on servo mounting, you might need to swap the
+    // target_normVy > 0.0f check to < 0.0f if the servo drives "backwards"
+    if (rollDifference > 80.0f && target_normVy > 0.0f) {
+        target_normVy = 0.0f; // Block further positive rotation
+    } else if (rollDifference < -80.0f && target_normVy < 0.0f) {
+        target_normVy = 0.0f; // Block further negative rotation
+    }
+    
     // 1. Apply smoothing/filtering
-    const float alpha = 0.4f; 
-    current_normVx = (alpha * target_normVx) + ((1.0f - alpha) * current_normVx);
-    current_normVy = (alpha * target_normVy) + ((1.0f - alpha) * current_normVy);
+    const float alpha = 1.0f; 
+    current_normVx = target_normVx;
+    current_normVy = target_normVy;
 
     if (abs(current_normVx - target_normVx) < 0.002f) current_normVx = target_normVx;
     if (abs(current_normVy - target_normVy) < 0.002f) current_normVy = target_normVy;
@@ -50,7 +69,7 @@ void setMotorSpeed(float target_normVx, float target_normVy) {
     static uint32_t last_pwm_update = 0;
     uint32_t now = millis();
     if (now - last_pwm_update >= 20) {
-        float locked_normVx = round(current_normVx * 50.0f) / 50.0f;
+        float locked_normVx = round(current_normVx * 50.0f) / 50.0f; // Quantize to 0.02 increments for smoother control and reduced noise
         mainMotor.command(locked_normVx);
         last_pwm_update = now;
     }

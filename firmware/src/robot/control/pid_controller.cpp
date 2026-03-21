@@ -16,10 +16,16 @@ static uint16_t target_omega = 1500;
 
 static float pitch_integral = 0.0f, pitch_prev_error = 0.0f;
 static float roll_integral = 0.0f, roll_prev_error = 0.0f;
+
+// --- NEW: State variables for the filters ---
+static float pitch_prev_derivative = 0.0f, pitch_prev_output = 0.0f;
+static float roll_prev_derivative = 0.0f, roll_prev_output = 0.0f;
+
 static bool pid_first_run = true;
 
 // --- Private Helper Prototypes ---
-float calculateAxisPID(float error, float& integral, float& prev_error, float kp, float ki, float kd, float dt, float dir, bool first_run);
+// NEW SIGNATURE: Added prev_derivative and prev_output to maintain filter states across loops
+float calculateAxisPID(float error, float& integral, float& prev_error, float& prev_derivative, float& prev_output, float kp, float ki, float kd, float dt, float dir, bool first_run);
 
 float applyRollSafety(float output, float currentRoll, float dir) {
     // Translate the raw motor command back into the IMU's physical coordinate space
@@ -50,8 +56,13 @@ void setTargetVelocities(uint16_t vx, uint16_t vy, uint16_t omega) {
 void resetPIDs() {
     pitch_integral = 0.0f; pitch_prev_error = 0.0f;
     roll_integral = 0.0f; roll_prev_error = 0.0f;
+    
+    // NEW: Reset filter states when PID is reset
+    pitch_prev_derivative = 0.0f; pitch_prev_output = 0.0f;
+    roll_prev_derivative = 0.0f; roll_prev_output = 0.0f;
 }
 
+// Maps RC input pulse (1000-2000) to normalized control (-1.0 to 1.0)
 float mapRcInput(uint16_t input_us) {
     input_us = constrain(input_us, 1000, 2000);
     return (float)(input_us - 1500) / 500.0f;
@@ -85,11 +96,14 @@ void updateStabilizer() {
         // Main IMU used for roll axis targeting
         float rError = targetRoll - mRoll;
 
-        // Calculate PID with new safe startup flag
+        // Calculate PID with new safe startup flag AND new filter states
         float outX = calculateAxisPID(pError, pitch_integral, pitch_prev_error, 
-                                     robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, dt, robotSettings.pitch_dir, pid_first_run);
+                                      pitch_prev_derivative, pitch_prev_output, 
+                                      robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, dt, robotSettings.pitch_dir, pid_first_run);
+        
         float outY = calculateAxisPID(rError, roll_integral, roll_prev_error, 
-                                     robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, dt, robotSettings.roll_dir, pid_first_run);
+                                      roll_prev_derivative, roll_prev_output, 
+                                      robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, dt, robotSettings.roll_dir, pid_first_run);
 
         pid_first_run = false; // Mark that we've completed our safe startup
 
@@ -98,8 +112,8 @@ void updateStabilizer() {
         // Apply outputs directly to motors
         setMotorSpeed(outX, outY);
 
-        DEBUG_PRINTF("DEBUG: Stabilized Mode | Target P: %.1f R: %.1f | Meas P: %.1f R: %.1f | Out P: %.3f R: %.3f\n", 
-                     targetPitch, targetRoll, sPitch, mRoll, outX, outY);
+        DEBUG_PRINTF("DEBUG: IMUs | Main R: %6.1f P: %6.1f Y: %6.1f | Sec R: %6.1f P: %6.1f Y: %6.1f | PID: P_err: %6.1f R_err: %6.1f\n", 
+                     mRoll, mPitch, mYaw, sRoll, sPitch, sYaw, pError, rError);
     } else {
         // Direct Mode: Pass through mapped inputs
         pid_first_run = true;
@@ -107,33 +121,56 @@ void updateStabilizer() {
     }
 }
 
-float calculateAxisPID(float error, float& integral, float& prev_error, float kp, float ki, float kd, float dt, float dir, bool first_run) {
+float calculateAxisPID(float error, float& integral, float& prev_error, float& prev_derivative, float& prev_output, float kp, float ki, float kd, float dt, float dir, bool first_run) {
+    
+    // --- CHANGE 1: Error Deadband ---
+    const float DEADBAND = 1.5f; 
+    if (abs(error) < robotSettings.deadband) {
+        error = 0.0f; 
+    }
+
     // 1. Prevent Derivative Kick on startup
     if (first_run) {
         prev_error = error; 
+        prev_derivative = 0.0f; 
+        prev_output = 0.0f;     
     }
     
     // 2. Calculate Integral with Anti-Windup
-    integral += error * dt;
+    if (error != 0.0f) {
+        integral += error * dt;
+    }
     if (ki > 0.0001f) {
-        float max_i = 1.0f / ki; // Prevent integral from demanding more than 100% motor speed
+        float max_i = 1.0f / ki; 
         if (integral > max_i) integral = max_i;
         if (integral < -max_i) integral = -max_i;
     }
     
     // 3. Calculate Derivative
-    float derivative = (error - prev_error) / dt;
+    float raw_derivative = (error - prev_error) / dt;
+    
+    // --- CHANGE 2: Low-Pass Filter on Derivative ---
+    // Use the dynamically loaded value from NVS memory
+    float derivative = (raw_derivative * robotSettings.d_alpha) + (prev_derivative * (1.0f - robotSettings.d_alpha));
+    
+    // Save states for next loop
+    prev_derivative = derivative;
     prev_error = error;
     
     // 4. Sum PID Output
-    float output = (kp * error) + (ki * integral) + (kd * derivative);
+    float raw_output = (kp * error) + (ki * integral) + (kd * derivative);
+    
+    // --- CHANGE 3: Slew Rate Limiting (Output Smoothing) ---
+    // Use the dynamically loaded value from NVS memory
+    float smoothed_output = (raw_output * robotSettings.out_alpha) + (prev_output * (1.0f - robotSettings.out_alpha));
+    prev_output = smoothed_output;
     
     // 5. Apply direction modifier and hard clamp the output
-    output *= dir;
-    if (output > 1.0f) output = 1.0f;
-    if (output < -1.0f) output = -1.0f;
+    smoothed_output *= dir;
+    if (smoothed_output > 1.0f) smoothed_output = 1.0f;
+    if (smoothed_output < -1.0f) smoothed_output = -1.0f;
     
-    return output;
+    return smoothed_output;
 }
 
 #endif
