@@ -24,6 +24,10 @@ struct RobotSettings {
     float kp_roll;  float ki_roll;  float kd_roll;
     float pitch_dir; float roll_dir;
 
+    float wobble_gain;
+    float wobble_threshold;
+    float wobble_min_vel;
+
     float d_alpha;
     float out_alpha;
     float deadband;
@@ -42,6 +46,7 @@ void saveDebugSettings(bool gen, bool imu, bool pkt_rx, bool pkt_tx); // <--- Up
 void saveEncoderLimits(int32_t min_limit, int32_t max_limit);
 void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float pdir, float rdir);
 void saveFilterSettings(float d_alpha, float out_alpha, float deadband);
+void saveWobbleSettings(float gain, float threshold, float min_vel);
 
 #endif // ROBOT_PREFERENCES_H
 #endif // ROLE_ROBOT

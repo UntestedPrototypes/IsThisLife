@@ -13,7 +13,8 @@ from telemetry_parser import TelemetryParser, TelemetryData, ConfirmRequest, Set
 from ui_config_tab import ConfigTab
 from ui_live_tab import LiveViewTab
 from ui_game_tab import GameControllerTab
-from ui_tuning_tab import TuningTab  # <--- NEW TAB IMPORT
+from ui_tuning_tab import TuningTab
+from ui_plot_tab import PlotTab  # <--- NEW TAB IMPORT
 import joystick_control
 import packet_sender
 import serial_comm
@@ -74,6 +75,7 @@ class Dashboard:
         robot.telemetry_mode = data.mode
         
         self.root.after(0, lambda: self.live_tab.update_telemetry(data))
+        self.root.after(0, lambda: self.plot_tab.update_telemetry(data)) # <--- ROUTE TO PLOT TAB
         self.root.after(0, lambda: self.game_tab.update_available_robots(
             self.robot_state.get_all_robot_ids()
         ))
@@ -152,9 +154,12 @@ class Dashboard:
         self.game_tab = GameControllerTab(self.tabs, self._save_config, self.app_config.get("assignments"))
         self.tabs.add(self.game_tab.get_frame(), text="Game Controller")
 
-        # --- NEW TUNING TAB INITIALIZATION ---
         self.tuning_tab = TuningTab(self.tabs, self.robot_state, self.app_config.get("tunable_settings"))
         self.tabs.add(self.tuning_tab.get_frame(), text="Parameter Tuning")
+        
+        # --- NEW PLOT TAB INITIALIZATION ---
+        self.plot_tab = PlotTab(self.tabs, self.robot_state)
+        self.tabs.add(self.plot_tab.get_frame(), text="IMU Plots")
 
     def _create_status_bar(self):
         self.status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, padding=(2, 2))

@@ -154,15 +154,18 @@ class JoystickController:
     def start_learning(self, key):
         self.learning_mode = key; self.learning_timeout = time.time() + LEARNING_TIMEOUT_SECONDS; self.learning_baseline = self._get_all_axis_values()
         return True
+        
     def check_learning(self):
         if not self.learning_mode: return False, None, False
         if time.time() > self.learning_timeout: self.learning_mode=None; return False,None,True
         detected = self._detect_input_change()
         if detected: self.mappings[self.learning_mode]=detected; self.learning_mode=None; return True,detected,False
         return False,None,False
+        
     def _get_all_axis_values(self):
         try: return [self.joy.get_axis(i) for i in range(self.joy.get_numaxes())]
         except: return []
+        
     def _detect_input_change(self):
         try:
             for i in range(self.joy.get_numaxes()):
@@ -171,6 +174,7 @@ class JoystickController:
                 if self.joy.get_button(i): return ("button",i)
         except: pass
         return None
+        
     def get_mapping_text(self, k): 
         if k not in self.mappings: 
             return "--"
@@ -179,7 +183,6 @@ class JoystickController:
         return f"{'Axis' if m[0]=='axis' else 'Btn'} {m[1]}"
 
 class ControllerManager:
-    # ... (ControllerManager implementation remains unchanged) ...
     def __init__(self):
         self.controllers = {}
         self.scan_devices()
@@ -207,8 +210,12 @@ class ControllerManager:
             joy = pygame.joystick.Joystick(index)
             joy.init()
             jid = joy.get_instance_id()
-            self.controllers[jid] = JoystickController(joy)
-            print(f"Hotplug: {joy.get_name()} (ID: {jid})")
+            
+            # CRITICAL FIX: Only add if we aren't already tracking it.
+            # Prevents Pygame from overwriting configs on the first tick!
+            if jid not in self.controllers:
+                self.controllers[jid] = JoystickController(joy)
+                print(f"Hotplug: {joy.get_name()} (ID: {jid})")
         except: pass
 
     def _handle_remove(self, instance_id):

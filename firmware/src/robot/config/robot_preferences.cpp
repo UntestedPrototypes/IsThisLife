@@ -52,6 +52,10 @@ void loadAllPreferences() {
     robotSettings.pitch_dir = prefs.getFloat("p_dir", 1.0f);
     robotSettings.roll_dir  = prefs.getFloat("r_dir", 1.0f);
 
+    robotSettings.wobble_gain = prefs.getFloat("w_gain", 0.005f);
+    robotSettings.wobble_threshold = prefs.getFloat("w_thresh", 15.0f);
+    robotSettings.wobble_min_vel = prefs.getFloat("w_mvel", 30.0f);
+
     robotSettings.d_alpha = prefs.getFloat("d_alpha", 0.0f);
     robotSettings.out_alpha = prefs.getFloat("out_alpha", 0.0f);
     robotSettings.deadband = prefs.getFloat("deadband", 0.0f);
@@ -143,5 +147,18 @@ void saveFilterSettings(float d_alpha, float out_alpha, float deadband) {
     robotSettings.d_alpha = d_alpha;
     robotSettings.out_alpha = out_alpha;
     robotSettings.deadband = deadband; // <--- ADD THIS LINE
+}
+
+void saveWobbleSettings(float gain, float threshold, float min_vel) {
+    prefs.begin(PREF_NAMESPACE, false);
+    prefs.putFloat("w_gain", gain);
+    prefs.putFloat("w_thresh", threshold);
+    prefs.putFloat("w_mvel", min_vel);
+    prefs.end();
+
+    // Update active runtime settings immediately
+    robotSettings.wobble_gain = gain;
+    robotSettings.wobble_threshold = threshold;
+    robotSettings.wobble_min_vel = min_vel;
 }
 #endif // ROLE_ROBOT

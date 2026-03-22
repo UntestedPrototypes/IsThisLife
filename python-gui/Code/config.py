@@ -50,5 +50,6 @@ DEFAULT_TUNABLE_SETTINGS = [
     "kp_pitch", "ki_pitch", "kd_pitch", 
     "kp_roll", "ki_roll", "kd_roll", 
     "pitch_dir", "roll_dir",
+    "wobble_gain", "wobble_thresh", "wobble_minvel",
     "dev_mode"
 ]

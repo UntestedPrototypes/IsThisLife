@@ -15,6 +15,7 @@ class GameControllerTab:
         self._last_connection_states = {}
         self.selected_controller_id = None
         self.learning_button_map = {} 
+        self.scale_vars = {} 
         self._setup_ui()
         
         # 1. Load data from JSON into self.assignments
@@ -82,13 +83,13 @@ class GameControllerTab:
         map_frame = ttk.Frame(edit_frame); map_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         keys = ["vx", "vy", "omega", "estop", "arm", "cruise_control", "mode_switch"]
-        labels = ["Forward/Back", "Left/Right", "Rotate", "E-STOP", "ARM/Disarm", "Cruise-Control Btn", "Mode Switch Btn"]
+        labels = ["Forward/Back", "Left/Right", "Rotate (Omega)", "E-STOP", "ARM/Disarm", "Cruise-Control Btn", "Mode Switch Btn"]
         
         ttk.Label(map_frame, text="Function", font=("", 9, "bold")).grid(row=0, column=0, padx=5, sticky="w")
         ttk.Label(map_frame, text="Value", font=("", 9, "bold")).grid(row=0, column=1, padx=5)
         ttk.Label(map_frame, text="Mapped To", font=("", 9, "bold")).grid(row=0, column=2, padx=5)
-        ttk.Label(map_frame, text="Action", font=("", 9, "bold")).grid(row=0, column=3, padx=5)
-        ttk.Label(map_frame, text="Max Speed %", font=("", 9, "bold")).grid(row=0, column=4, padx=5)
+        ttk.Label(map_frame, text="Actions", font=("", 9, "bold")).grid(row=0, column=3, columnspan=2, padx=5) # Span 2 columns for Bind & Unbind
+        ttk.Label(map_frame, text="Max Speed %", font=("", 9, "bold")).grid(row=0, column=5, padx=5)
         
         for i, (key, label) in enumerate(zip(keys, labels)):
             row = i + 1
@@ -96,12 +97,21 @@ class GameControllerTab:
             lbl_val = ttk.Label(map_frame, text="0.00", width=8); lbl_val.grid(row=row, column=1, padx=5)
             lbl_map = ttk.Label(map_frame, text="--", width=15); lbl_map.grid(row=row, column=2, padx=5)
             
-            btn = ttk.Button(map_frame, text="Bind Input", command=lambda k=key: self._start_learning(k))
-            btn.grid(row=row, column=3, padx=5) 
+            # Action Buttons
+            btn_bind = ttk.Button(map_frame, text="Bind Input", width=12, command=lambda k=key: self._start_learning(k))
+            btn_bind.grid(row=row, column=3, padx=(5, 2)) 
+            
+            btn_unbind = ttk.Button(map_frame, text="Unbind", width=8, command=lambda k=key: self._unbind_input(k))
+            btn_unbind.grid(row=row, column=4, padx=(2, 5))
                 
             sb = None
-            if key in ["vx", "vy", "omega"]: sb = ttk.Spinbox(map_frame, from_=10, to=100, increment=10, width=5); sb.set(100); sb.grid(row=row, column=4, padx=5)
-            self.learning_button_map[key] = {"val_label": lbl_val, "map_label": lbl_map, "btn": btn, "scale_sb": sb}
+            if key in ["vx", "vy", "omega"]: 
+                var = tk.IntVar(value=100)
+                self.scale_vars[key] = var
+                sb = ttk.Spinbox(map_frame, from_=10, to=100, increment=10, width=5, textvariable=var)
+                sb.grid(row=row, column=5, padx=5)
+                
+            self.learning_button_map[key] = {"val_label": lbl_val, "map_label": lbl_map, "btn": btn_bind, "unbind_btn": btn_unbind, "scale_sb": sb}
             
         btn_apply = ttk.Button(edit_frame, text="Apply Settings to Robot", command=self._assign_controller); btn_apply.pack(fill=tk.X, padx=20, pady=(10, 10))
 
@@ -124,18 +134,26 @@ class GameControllerTab:
                 self._on_robot_select(None)
 
     def _load_initial_assignments(self, saved_data):
-        default_scales = {'vx': 100, 'vy': 100, 'omega': 100}
         for r_id_str, val in saved_data.items():
             try:
                 r_id = int(r_id_str)
                 idx = val.get('instance_index', 0) if isinstance(val, dict) else 0
                 
+                # Default baseline to ensure robust loading
+                loaded_scales = {'vx': 100, 'vy': 100, 'omega': 100}
+                
                 if isinstance(val, dict):
+                    # Forcibly load the scales from JSON regardless of mapping bounds
+                    for k, v in val.get('scales', {}).items():
+                        try:
+                            loaded_scales[k] = int(v)
+                        except (ValueError, TypeError): pass
+                    
                     self.assignments[r_id] = {
                         'id': None, 'guid': val.get('guid', ''), 
                         'instance_index': idx, 
                         'name': "Searching...", 
-                        'scales': val.get('scales', default_scales.copy()),
+                        'scales': loaded_scales,
                         'deadzone': val.get('deadzone', 10),
                         'mappings': val.get('mappings', {}) 
                     }
@@ -144,7 +162,7 @@ class GameControllerTab:
                         'id': None, 'guid': str(val), 
                         'instance_index': 0, 
                         'name': "Searching...", 
-                        'scales': default_scales.copy(),
+                        'scales': loaded_scales.copy(),
                         'deadzone': 10,
                         'mappings': {} 
                     }
@@ -206,7 +224,7 @@ class GameControllerTab:
             
             scales = {}
             for key in ["vx", "vy", "omega"]:
-                try: scales[key] = max(0, min(100, int(self.learning_button_map[key]["scale_sb"].get())))
+                try: scales[key] = max(0, min(100, self.scale_vars[key].get()))
                 except: scales[key] = 100
                 
             dz = 10
@@ -257,8 +275,16 @@ class GameControllerTab:
 
     def _start_learning(self, key):
         if self.selected_controller_id is None: return
-        ctrl = self.manager.get_controller(self.selected_controller_id);
+        ctrl = self.manager.get_controller(self.selected_controller_id)
         if ctrl: ctrl.start_learning(key); self.learning_button_map[key]["btn"].configure(text="Press...", state="disabled")
+
+    def _unbind_input(self, key):
+        """Immediately removes the binding for the specified key on the current controller"""
+        if self.selected_controller_id is None: return
+        ctrl = self.manager.get_controller(self.selected_controller_id)
+        if ctrl:
+            ctrl.mappings[key] = ("none", 0)
+            self._update_mapping_display()
 
     def check_learning(self):
         if self.selected_controller_id is None: return
@@ -303,9 +329,11 @@ class GameControllerTab:
             r_id = int(r_val)
             
             if r_id in self.assignments:
-                scales = self.assignments[r_id]['scales']
-                for key, val in scales.items():
-                    if key in self.learning_button_map and self.learning_button_map[key]["scale_sb"]: self.learning_button_map[key]["scale_sb"].set(val)
+                # Guaranteed to have default speeds fallback, completely ignoring mappings
+                scales = self.assignments[r_id].get('scales', {'vx': 100, 'vy': 100, 'omega': 100})
+                for key in ["vx", "vy", "omega"]:
+                    if key in self.scale_vars: 
+                        self.scale_vars[key].set(scales.get(key, 100))
                 
                 self.deadzone_var.set(self.assignments[r_id].get('deadzone', 10))
                 
@@ -320,7 +348,8 @@ class GameControllerTab:
                 if not found: self.controller_combo.set("")
             else:
                 for key in ["vx", "vy", "omega"]:
-                    if self.learning_button_map[key]["scale_sb"]: self.learning_button_map[key]["scale_sb"].set(100)
+                    if key in self.scale_vars: 
+                        self.scale_vars[key].set(100)
                 self.deadzone_var.set(10)
                 self.controller_combo.set("") 
         except: pass

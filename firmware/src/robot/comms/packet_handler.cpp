@@ -75,6 +75,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             String key = String(safeKey);
             
             bool save_pid_needed = false;
+            bool save_wobble_needed = false;
 
             // Catch Volatile flags first
             if (key == "dev_mode") {
@@ -90,12 +91,18 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kd_roll")  { robotSettings.kd_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "pitch_dir"){ robotSettings.pitch_dir = setPkt.value; save_pid_needed = true; }
             else if (key == "roll_dir") { robotSettings.roll_dir = setPkt.value; save_pid_needed = true; }
-            
+            else if (key == "wobble_gain")   { robotSettings.wobble_gain = setPkt.value; save_wobble_needed = true; }
+            else if (key == "wobble_thresh") { robotSettings.wobble_threshold = setPkt.value; save_wobble_needed = true; }
+            else if (key == "wobble_minvel") { robotSettings.wobble_min_vel = setPkt.value; save_wobble_needed = true; }
+
             // Only burn to flash if it was a permanent variable
             if (save_pid_needed) {
                 savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                                 robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
                                 robotSettings.pitch_dir, robotSettings.roll_dir);             
+            }
+            if (save_wobble_needed) {
+                saveWobbleSettings(robotSettings.wobble_gain, robotSettings.wobble_threshold, robotSettings.wobble_min_vel);
             }
             xSemaphoreGive(stateMutex);
         }
@@ -125,6 +132,9 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kd_roll") value = robotSettings.kd_roll;
             else if (key == "pitch_dir") value = robotSettings.pitch_dir;
             else if (key == "roll_dir") value = robotSettings.roll_dir;
+            else if (key == "wobble_gain") value = robotSettings.wobble_gain;
+            else if (key == "wobble_thresh") value = robotSettings.wobble_threshold;
+            else if (key == "wobble_minvel") value = robotSettings.wobble_min_vel;
             else found = false;
             xSemaphoreGive(stateMutex);
 

@@ -1,13 +1,13 @@
 {
-    "com_port": "COM26",
+    "com_port": "COM3",
     "baud_rate": 115200,
     "assignments": {
         "3": {
             "guid": "030082795e040000ea02000000007200",
             "instance_index": 0,
             "scales": {
-                "vx": 50,
-                "vy": 50,
+                "vx": 100,
+                "vy": 100,
                 "omega": 0
             },
             "deadzone": 10,
@@ -43,5 +43,19 @@
             }
         }
     },
-    "auto_reconnect": true
+    "auto_reconnect": true,
+    "tunable_settings": [
+        "kp_pitch",
+        "ki_pitch",
+        "kd_pitch",
+        "kp_roll",
+        "ki_roll",
+        "kd_roll",
+        "pitch_dir",
+        "roll_dir",
+        "wobble_gain",
+        "wobble_thresh",
+        "wobble_minvel",
+        "dev_mode"
+    ]
 }
