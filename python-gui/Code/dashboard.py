@@ -112,12 +112,13 @@ class Dashboard:
 
     def _load_config(self):
         # Merges default values with existing config.json to ensure stability
+        # Order defined here will be used for new config files
         default = {
             "com_port": "", 
             "baud_rate": BAUD_RATE, 
-            "assignments": {}, 
             "auto_reconnect": False,
-            "tunable_settings": DEFAULT_TUNABLE_SETTINGS # Fallback list
+            "tunable_settings": DEFAULT_TUNABLE_SETTINGS, # Fallback list
+            "assignments": {}
         }
         if os.path.exists("config.json"):
             try:
@@ -131,12 +132,31 @@ class Dashboard:
         return default
     
     def _save_config(self):
+        # Update current values
         self.app_config["com_port"] = self.config_tab.get_selected_port()
         self.app_config["baud_rate"] = self.config_tab.get_selected_baud()
         self.app_config["auto_reconnect"] = self.config_tab.is_auto_reconnect_enabled()
         self.app_config["assignments"] = self.game_tab.get_assignment_guids()
+        
+        # Enforce strict key ordering for the JSON output
+        ordered_config = {
+            "com_port": self.app_config.get("com_port", ""),
+            "baud_rate": self.app_config.get("baud_rate", BAUD_RATE),
+            "auto_reconnect": self.app_config.get("auto_reconnect", False),
+            "tunable_settings": self.app_config.get("tunable_settings", DEFAULT_TUNABLE_SETTINGS),
+            "assignments": self.app_config.get("assignments", {})
+        }
+        
+        # Preserve any other potential custom keys at the bottom
+        for k, v in self.app_config.items():
+            if k not in ordered_config:
+                ordered_config[k] = v
+                
+        self.app_config = ordered_config # Update in-memory reference
+        
         try:
-            with open("config.json", 'w') as f: json.dump(self.app_config, f, indent=4)
+            with open("config.json", 'w') as f: 
+                json.dump(self.app_config, f, indent=4)
             messagebox.showinfo("Success", "Configuration saved successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save config: {e}")
