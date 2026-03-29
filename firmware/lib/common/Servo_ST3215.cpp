@@ -9,10 +9,18 @@ static Servo_ST3215* servoInstance = NULL;
 void servoUpdateTask(void* parameter) {
     Servo_ST3215* servo = (Servo_ST3215*)parameter;
     
+    // Initialize the xLastWakeTime variable with the current time.
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    // Set the frequency to 1 Tick (1 millisecond on standard ESP32 configs)
+    const TickType_t xFrequency = pdMS_TO_TICKS(4);
+    
     while (1) {
-        // Run servo update every 5ms on core 1
+        // Run servo update
         servo->update();
-        vTaskDelay(5 / portTICK_PERIOD_MS);
+        
+        // Wait for the exact 1ms window to complete before running again.
+        // This ensures a steady 1000Hz check rate without drift.
+        vTaskDelayUntil(&xLastWakeTime, xFrequency); 
     }
 }
 
@@ -155,7 +163,13 @@ void Servo_ST3215::update() {
 
     // 3. Sync Correction Logic
     long drift = Pos1 - pos2;
-    int syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
+    int syncCorrection = 0;
+    
+    // Add a deadband (e.g., ignore drift less than 15 encoder ticks)
+    // This absorbs the measurement error caused by sequential reading delays
+    if (abs(drift) > 15) {
+        syncCorrection = (int)(drift * 0.2); // Proportional gain K_sync = 0.2
+    }
 
     // 4. Calculate Final Speeds
     int baseSpeed = (int)(currentVelCommand * speedFactor);
@@ -173,33 +187,9 @@ void Servo_ST3215::update() {
 }
 
 void Servo_ST3215::setVelocity(int targetVelocity) {
-    long currentPos = getPosition(id1);
-    float speedFactor = 1.0;
-
-    // Deceleration logic for Max Limit
-    if (targetVelocity > 0 && currentPos > (maxLimit - slowdownThreshold)) {
-        long distanceToLimit = maxLimit - currentPos;
-        speedFactor = (float)distanceToLimit / slowdownThreshold;
-    }
-    // Deceleration logic for Min Limit
-    else if (targetVelocity < 0 && currentPos < (minLimit + slowdownThreshold)) {
-        long distanceToLimit = currentPos - minLimit;
-        speedFactor = (float)distanceToLimit / slowdownThreshold;
-    }
-
-    // Clamp factor between 0.0 and 1.0
-    if (speedFactor < 0) speedFactor = 0;
-    if (speedFactor > 1.0) speedFactor = 1.0;
-
+    // Simply store the target. 
+    // Do NOT call st.WriteSpe() here!
     currentVelCommand = targetVelocity;
-    
-    // Apply the scaling factor to the final speed sent to servos
-    int finalSpeed = (int)(targetVelocity * speedFactor);
-
-    int s1 = finalSpeed;
-    int s2 = reverse2 ? -finalSpeed : finalSpeed;
-    st.WriteSpe(id1, (s16)s1, (u8)accel);
-    st.WriteSpe(id2, (s16)s2, (u8)accel);
 }
 
 void Servo_ST3215::stop() {

@@ -49,6 +49,11 @@ void loadAllPreferences() {
     robotSettings.ki_roll  = prefs.getFloat("ki_r", 0.001f);
     robotSettings.kd_roll  = prefs.getFloat("kd_r", 0.01f);
 
+    // OUTER PID ROLL
+    robotSettings.kp_outer_roll = prefs.getFloat("kp_or", 1.5f);
+    robotSettings.ki_outer_roll = prefs.getFloat("ki_or", 0.05f);
+    robotSettings.kd_outer_roll = prefs.getFloat("kd_or", 0.1f);
+
     robotSettings.pitch_dir = prefs.getFloat("p_dir", 1.0f);
     robotSettings.roll_dir  = prefs.getFloat("r_dir", 1.0f);
 
@@ -123,16 +128,18 @@ void saveEncoderLimits(int32_t min_limit, int32_t max_limit) {
     setEncoderLimits(min_limit, max_limit);
 }
 
-void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float pdir, float rdir) {
+void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float kpor, float kior, float kdor, float pdir, float rdir) {
     prefs.begin(PREF_NAMESPACE, false);
     prefs.putFloat("kp_p", kpp); prefs.putFloat("ki_p", kip); prefs.putFloat("kd_p", kdp);
     prefs.putFloat("kp_r", kpr); prefs.putFloat("ki_r", kir); prefs.putFloat("kd_r", kdr);
+    prefs.putFloat("kp_or", kpor); prefs.putFloat("ki_or", kior); prefs.putFloat("kd_or", kdor); // <-- NEW
     prefs.putFloat("p_dir", pdir); prefs.putFloat("r_dir", rdir);
     prefs.end();
 
     // Update active runtime settings immediately
     robotSettings.kp_pitch = kpp; robotSettings.ki_pitch = kip; robotSettings.kd_pitch = kdp;
     robotSettings.kp_roll = kpr;  robotSettings.ki_roll = kir;  robotSettings.kd_roll = kdr;
+    robotSettings.kp_outer_roll = kpor; robotSettings.ki_outer_roll = kior; robotSettings.kd_outer_roll = kdor; // <-- NEW
     robotSettings.pitch_dir = pdir; robotSettings.roll_dir = rdir;
 }
 

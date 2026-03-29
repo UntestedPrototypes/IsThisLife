@@ -22,6 +22,7 @@ struct RobotSettings {
 
     float kp_pitch; float ki_pitch; float kd_pitch;
     float kp_roll;  float ki_roll;  float kd_roll;
+    float kp_outer_roll; float ki_outer_roll; float kd_outer_roll; // <-- NEW
     float pitch_dir; float roll_dir;
 
     float wobble_gain;
@@ -42,9 +43,15 @@ void saveIMUOffsets(float qw, float qx, float qy, float qz);
 
 void saveNetworkSettings(uint8_t* mac, uint8_t id);
 void saveTimingSettings(uint32_t heartbeat, uint32_t telemetry, uint32_t confirm);
-void saveDebugSettings(bool gen, bool imu, bool pkt_rx, bool pkt_tx); // <--- Updated signature
+void saveDebugSettings(bool gen, bool imu, bool pkt_rx, bool pkt_tx);
 void saveEncoderLimits(int32_t min_limit, int32_t max_limit);
-void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float pdir, float rdir);
+
+// <-- SIGNATURE UPDATED 
+void savePidSettings(float kpp, float kip, float kdp, 
+                     float kpr, float kir, float kdr, 
+                     float kpor, float kior, float kdor, 
+                     float pdir, float rdir);
+
 void saveFilterSettings(float d_alpha, float out_alpha, float deadband);
 void saveWobbleSettings(float gain, float threshold, float min_vel);
 

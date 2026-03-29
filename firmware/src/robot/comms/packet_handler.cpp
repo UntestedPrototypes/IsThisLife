@@ -86,9 +86,15 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kp_pitch") { robotSettings.kp_pitch = setPkt.value; save_pid_needed = true; }
             else if (key == "ki_pitch") { robotSettings.ki_pitch = setPkt.value; save_pid_needed = true; }
             else if (key == "kd_pitch") { robotSettings.kd_pitch = setPkt.value; save_pid_needed = true; }
+
             else if (key == "kp_roll")  { robotSettings.kp_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "ki_roll")  { robotSettings.ki_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "kd_roll")  { robotSettings.kd_roll = setPkt.value; save_pid_needed = true; }
+
+            else if (key == "kp_oroll") { robotSettings.kp_outer_roll = setPkt.value; save_pid_needed = true; }
+            else if (key == "ki_oroll") { robotSettings.ki_outer_roll = setPkt.value; save_pid_needed = true; }
+            else if (key == "kd_oroll") { robotSettings.kd_outer_roll = setPkt.value; save_pid_needed = true; }
+
             else if (key == "pitch_dir"){ robotSettings.pitch_dir = setPkt.value; save_pid_needed = true; }
             else if (key == "roll_dir") { robotSettings.roll_dir = setPkt.value; save_pid_needed = true; }
             else if (key == "wobble_gain")   { robotSettings.wobble_gain = setPkt.value; save_wobble_needed = true; }
@@ -99,6 +105,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             if (save_pid_needed) {
                 savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                                 robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                                robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                                 robotSettings.pitch_dir, robotSettings.roll_dir);             
             }
             if (save_wobble_needed) {
@@ -127,11 +134,18 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kp_pitch") value = robotSettings.kp_pitch;
             else if (key == "ki_pitch") value = robotSettings.ki_pitch;
             else if (key == "kd_pitch") value = robotSettings.kd_pitch;
+
             else if (key == "kp_roll") value = robotSettings.kp_roll;
             else if (key == "ki_roll") value = robotSettings.ki_roll;
             else if (key == "kd_roll") value = robotSettings.kd_roll;
+
+            else if (key == "kp_oroll") value = robotSettings.kp_outer_roll;
+            else if (key == "ki_oroll") value = robotSettings.ki_outer_roll;
+            else if (key == "kd_oroll") value = robotSettings.kd_outer_roll;
+
             else if (key == "pitch_dir") value = robotSettings.pitch_dir;
             else if (key == "roll_dir") value = robotSettings.roll_dir;
+            
             else if (key == "wobble_gain") value = robotSettings.wobble_gain;
             else if (key == "wobble_thresh") value = robotSettings.wobble_threshold;
             else if (key == "wobble_minvel") value = robotSettings.wobble_min_vel;

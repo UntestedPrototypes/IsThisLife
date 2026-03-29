@@ -49,7 +49,9 @@ void handleSerialCommands() {
         Serial.printf("Pitch PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
                   robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, robotSettings.pitch_dir);
         Serial.printf("Roll  PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
-                  robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir); 
+                  robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir);
+        Serial.printf("ORoll PID [P:%.3f I:%.3f D:%.3f]\n",
+                  robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll);
         Serial.printf("Filters   [D_Alpha:%.3f Out_Alpha:%.3f Deadband:%.3f]\n", 
                   robotSettings.d_alpha, robotSettings.out_alpha, robotSettings.deadband);
         Serial.printf("Debug General: %s\n", dbg_general ? "ON" : "OFF");
@@ -65,16 +67,22 @@ void handleSerialCommands() {
         Serial.println("  SET_MAC <mac>       - Set Controller MAC");
         Serial.println("  SET_HB <ms>         - Set Heartbeat timeout");
         Serial.println("  SET_TLM <pkts>      - Set Telemetry interval");
+
         Serial.println("  SET_CNF <ms>        - Set Confirm timeout");
         Serial.println("  SET_ENC <min> <max> - Set Encoder limits");
+
         Serial.println("  SET_PID_PITCH <P> <I> <D> <DIR> - Set Pitch constants");
         Serial.println("  SET_PID_ROLL  <P> <I> <D> <DIR> - Set Roll constants");
+        Serial.println("  SET_PID_OROLL <P> <I> <D>       - Set Outer Roll constants");
+
         Serial.println("  SET_FILTER <D_ALPHA> <OUT_ALPHA> <DEADBAND> - Set Derivative, Output smoothing (0-1), and Error Deadband");
+        
         Serial.println("  SET_DBG_GEN <ON/OFF>- Toggle general debug messages");
         Serial.println("  SET_DBG_IMU <ON/OFF>- Toggle high-frequency IMU stream");
-        Serial.println("  SET_DBG_RX <ON/OFF> - Toggle incoming packet stream");  // <--- Split CMD
-        Serial.println("  SET_DBG_TX <ON/OFF> - Toggle outgoing telemetry stream"); // <--- Split CMD
-        Serial.println("  DEV_MODE <ON/OFF>   - Toggle Dev Mode (skips IMU calibration)"); 
+        Serial.println("  SET_DBG_RX <ON/OFF> - Toggle incoming packet stream");
+        Serial.println("  SET_DBG_TX <ON/OFF> - Toggle outgoing telemetry stream");
+        Serial.println("  DEV_MODE <ON/OFF>   - Toggle Dev Mode (skips IMU calibration)");
+
         Serial.println("\n*** Press [ENTER] to exit menu and resume logs ***\n");
     }
     else if (cmd == "SET_ID") {
@@ -113,22 +121,12 @@ void handleSerialCommands() {
     }
     else if (cmd == "SET_PID_PITCH") {
         float p, i, d, dir;
-        // Arguments format: "0.05 0.001 0.01 1.0"
         int count = sscanf(args.c_str(), "%f %f %f %f", &p, &i, &d, &dir);
-        
         if (count == 4) {
-            // Use current Roll settings to perform a full save
-            savePidSettings(p, i, d, 
-                           robotSettings.kp_roll, robotSettings.ki_roll, 
-                           robotSettings.kd_roll, robotSettings.pitch_dir, // Note: updating pitch_dir
-                           robotSettings.roll_dir);
-            
-            // Correction: The savePidSettings signature used earlier was:
-            // savePidSettings(kpp, kip, kdp, kpr, kir, kdr, pdir, rdir)
             savePidSettings(p, i, d, 
                            robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, 
+                           robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                            dir, robotSettings.roll_dir);
-
             Serial.printf("SUCCESS: Pitch PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
         } else {
             Serial.println("ERROR: Invalid format. Use: SET_PID_PITCH <P> <I> <D> <DIR>");
@@ -137,16 +135,27 @@ void handleSerialCommands() {
     else if (cmd == "SET_PID_ROLL") {
         float p, i, d, dir;
         int count = sscanf(args.c_str(), "%f %f %f %f", &p, &i, &d, &dir);
-        
         if (count == 4) {
-            // Use current Pitch settings to perform a full save
             savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                            p, i, d, 
+                           robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                            robotSettings.pitch_dir, dir);
-
             Serial.printf("SUCCESS: Roll PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
         } else {
             Serial.println("ERROR: Invalid format. Use: SET_PID_ROLL <P> <I> <D> <DIR>");
+        }
+    }
+    else if (cmd == "SET_PID_OROLL") {
+        float p, i, d;
+        int count = sscanf(args.c_str(), "%f %f %f", &p, &i, &d);
+        if (count == 3) {
+            savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
+                           robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                           p, i, d, 
+                           robotSettings.pitch_dir, robotSettings.roll_dir);
+            Serial.printf("SUCCESS: Outer Roll PID updated to P:%.4f I:%.4f D:%.4f\n", p, i, d);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_PID_OROLL <P> <I> <D>");
         }
     }
    else if (cmd == "SET_FILTER") {
