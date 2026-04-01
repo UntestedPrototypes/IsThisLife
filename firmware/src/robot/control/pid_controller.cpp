@@ -14,14 +14,19 @@ static uint16_t target_vx = 1500;
 static uint16_t target_vy = 1500;
 static uint16_t target_omega = 1500;
 
-static float pitch_integral = 0.0f, pitch_prev_error = 0.0f;
-static float pitch_prev_derivative = 0.0f, pitch_prev_output = 0.0f;
+// Cascade Inner loop state for PITCH
+static float pitch_inner_integral = 0.0f, pitch_inner_prev_error = 0.0f;
+static float pitch_inner_prev_derivative = 0.0f, pitch_inner_prev_output = 0.0f;
 
-// Cascade Inner loop state (Motor command)
+// Cascade Outer loop state for PITCH
+static float pitch_outer_integral = 0.0f, pitch_outer_prev_error = 0.0f;
+static float pitch_outer_prev_derivative = 0.0f, pitch_outer_prev_output = 0.0f;
+
+// Cascade Inner loop state for ROLL
 static float roll_inner_integral = 0.0f, roll_inner_prev_error = 0.0f;
 static float roll_inner_prev_derivative = 0.0f, roll_inner_prev_output = 0.0f;
 
-// Cascade Outer loop state (Target secondary angle calculation)
+// Cascade Outer loop state for ROLL
 static float roll_outer_integral = 0.0f, roll_outer_prev_error = 0.0f;
 static float roll_outer_prev_derivative = 0.0f, roll_outer_prev_output = 0.0f;
 
@@ -30,9 +35,7 @@ static float prev_roll = 0.0f;
 
 static bool pid_first_run = true;
 
-// Default constants for the Outer PID loop 
-// (You may expose these to robot_preferences.cpp later for live tuning)
-const float MAX_OUTER_TARGET_ANGLE = 45.0f; // Limit secondary max tilt compensation
+const float MAX_OUTER_TARGET_ANGLE = 45.0f; // Shared limit for secondary target tilt
 
 // --- Private Helper Prototypes ---
 float calculateAxisPID(float error, float& integral, float& prev_error, float& prev_derivative, float& prev_output, float kp, float ki, float kd, float dt, float dir, bool first_run);
@@ -63,9 +66,12 @@ void setTargetVelocities(uint16_t vx, uint16_t vy, uint16_t omega) {
 }
 
 void resetPIDs() {
-    pitch_integral = 0.0f; pitch_prev_error = 0.0f;
-    pitch_prev_derivative = 0.0f; pitch_prev_output = 0.0f;
+    pitch_inner_integral = 0.0f; pitch_inner_prev_error = 0.0f;
+    pitch_inner_prev_derivative = 0.0f; pitch_inner_prev_output = 0.0f;
     
+    pitch_outer_integral = 0.0f; pitch_outer_prev_error = 0.0f;
+    pitch_outer_prev_derivative = 0.0f; pitch_outer_prev_output = 0.0f;
+
     roll_inner_integral = 0.0f; roll_inner_prev_error = 0.0f;
     roll_inner_prev_derivative = 0.0f; roll_inner_prev_output = 0.0f;
 
@@ -122,21 +128,31 @@ void updateStabilizer() {
         float targetPitch = inputX * 45.0f;
         float targetRoll = inputY * 30.0f;
 
-        // PITCH AXIS (Direct approach)
-        float pError = targetPitch - sPitch;
-        float outX = calculateAxisPID(pError, pitch_integral, pitch_prev_error, 
-                                      pitch_prev_derivative, pitch_prev_output, 
-                                      robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, dt, robotSettings.pitch_dir, pid_first_run);
+        // --- PITCH AXIS (CASCADING CONTROLLER) ---
+        // 1. Outer Loop: Find target Secondary Pitch based on Main Pitch Error
+        float pOuterError = targetPitch - mPitch;
+        float target_sPitch = calculateOuterPID(pOuterError, pitch_outer_integral, pitch_outer_prev_error,
+                                                pitch_outer_prev_derivative, pitch_outer_prev_output,
+                                                robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch, 
+                                                dt, MAX_OUTER_TARGET_ANGLE, pid_first_run);
+
+        // 2. Inner Loop: Hit the Secondary Pitch target generated above
+        float pInnerError = target_sPitch - sPitch;
+        float outX = calculateAxisPID(pInnerError, pitch_inner_integral, pitch_inner_prev_error, 
+                                      pitch_inner_prev_derivative, pitch_inner_prev_output, 
+                                      robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, 
+                                      dt, robotSettings.pitch_dir, pid_first_run);
+
         
         // --- ROLL AXIS (CASCADING CONTROLLER) ---
-        // 1. Outer Loop: Find target Secondary IMU Angle based on Main IMU Error
+        // 1. Outer Loop: Find target Secondary Roll based on Main Roll Error
         float rOuterError = targetRoll - mRoll;
         float target_sRoll = calculateOuterPID(rOuterError, roll_outer_integral, roll_outer_prev_error,
                                                roll_outer_prev_derivative, roll_outer_prev_output,
                                                robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll, 
                                                dt, MAX_OUTER_TARGET_ANGLE, pid_first_run);
 
-        // 2. Inner Loop: Hit the Secondary IMU Angle target generated above
+        // 2. Inner Loop: Hit the Secondary Roll target generated above
         float rInnerError = target_sRoll - sRoll;
         float outY = calculateAxisPID(rInnerError, roll_inner_integral, roll_inner_prev_error, 
                                       roll_inner_prev_derivative, roll_inner_prev_output, 
@@ -205,7 +221,6 @@ float calculateAxisPID(float error, float& integral, float& prev_error, float& p
     return smoothed_output;
 }
 
-// Outer PID to output an angle target instead of normalized [-1.0, 1.0] motor speed
 float calculateOuterPID(float error, float& integral, float& prev_error, float& prev_derivative, float& prev_output, float kp, float ki, float kd, float dt, float limit, bool first_run) {
     if (first_run) {
         prev_error = error; 

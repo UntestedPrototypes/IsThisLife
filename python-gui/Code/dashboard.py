@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 import json
 import os
 import time
+import re  # <--- IMPORT REGEX FOR COMPACT JSON FORMATTING
 
 from config import *
 from robot_state import RobotStateManager
@@ -14,7 +15,7 @@ from ui_config_tab import ConfigTab
 from ui_live_tab import LiveViewTab
 from ui_game_tab import GameControllerTab
 from ui_tuning_tab import TuningTab
-from ui_plot_tab import PlotTab  # <--- NEW TAB IMPORT
+from ui_plot_tab import PlotTab
 import joystick_control
 import packet_sender
 import serial_comm
@@ -75,7 +76,7 @@ class Dashboard:
         robot.telemetry_mode = data.mode
         
         self.root.after(0, lambda: self.live_tab.update_telemetry(data))
-        self.root.after(0, lambda: self.plot_tab.update_telemetry(data)) # <--- ROUTE TO PLOT TAB
+        self.root.after(0, lambda: self.plot_tab.update_telemetry(data))
         self.root.after(0, lambda: self.game_tab.update_available_robots(
             self.robot_state.get_all_robot_ids()
         ))
@@ -155,8 +156,21 @@ class Dashboard:
         self.app_config = ordered_config # Update in-memory reference
         
         try:
+            # 1. Dump normal indented JSON
+            raw_json = json.dumps(self.app_config, indent=4)
+            
+            # 2. Use Regex to compact lists of primitives (strings/numbers) into a single line
+            # This matches any [ ... ] that doesn't contain '{' or '[' inside it,
+            # and replaces the linebreaks/excessive spaces inside it.
+            compact_json = re.sub(
+                r'\[\s*([^\[\]\{\}]*?)\s*\]',
+                lambda m: '[' + re.sub(r'\s*\n\s*', ' ', m.group(1).strip()) + ']',
+                raw_json
+            )
+            
             with open("config.json", 'w') as f: 
-                json.dump(self.app_config, f, indent=4)
+                f.write(compact_json)
+                
             messagebox.showinfo("Success", "Configuration saved successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save config: {e}")
@@ -177,7 +191,6 @@ class Dashboard:
         self.tuning_tab = TuningTab(self.tabs, self.robot_state, self.app_config.get("tunable_settings"))
         self.tabs.add(self.tuning_tab.get_frame(), text="Parameter Tuning")
         
-        # --- NEW PLOT TAB INITIALIZATION ---
         self.plot_tab = PlotTab(self.tabs, self.robot_state)
         self.tabs.add(self.plot_tab.get_frame(), text="IMU Plots")
 

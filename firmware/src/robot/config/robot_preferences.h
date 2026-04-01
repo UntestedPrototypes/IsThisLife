@@ -22,7 +22,8 @@ struct RobotSettings {
 
     float kp_pitch; float ki_pitch; float kd_pitch;
     float kp_roll;  float ki_roll;  float kd_roll;
-    float kp_outer_roll; float ki_outer_roll; float kd_outer_roll; // <-- NEW
+    float kp_outer_pitch; float ki_outer_pitch; float kd_outer_pitch;
+    float kp_outer_roll; float ki_outer_roll; float kd_outer_roll;
     float pitch_dir; float roll_dir;
 
     float wobble_gain;
@@ -48,7 +49,8 @@ void saveEncoderLimits(int32_t min_limit, int32_t max_limit);
 
 // <-- SIGNATURE UPDATED 
 void savePidSettings(float kpp, float kip, float kdp, 
-                     float kpr, float kir, float kdr, 
+                     float kpr, float kir, float kdr,
+                     float kpop, float kiop, float kdop,
                      float kpor, float kior, float kdor, 
                      float pdir, float rdir);
 

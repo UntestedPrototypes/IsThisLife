@@ -77,12 +77,10 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             bool save_pid_needed = false;
             bool save_wobble_needed = false;
 
-            // Catch Volatile flags first
             if (key == "dev_mode") {
-                robotSettings.dev_mode = (setPkt.value == 1.0f); // 1.0 = true, 0.0 = false
-                setCalibrationRequired(!robotSettings.dev_mode); // If dev_mode is true, bypass calibration requirement
+                robotSettings.dev_mode = (setPkt.value == 1.0f);
+                setCalibrationRequired(!robotSettings.dev_mode);
             } 
-            // Otherwise parse permanent PID flags
             else if (key == "kp_pitch") { robotSettings.kp_pitch = setPkt.value; save_pid_needed = true; }
             else if (key == "ki_pitch") { robotSettings.ki_pitch = setPkt.value; save_pid_needed = true; }
             else if (key == "kd_pitch") { robotSettings.kd_pitch = setPkt.value; save_pid_needed = true; }
@@ -90,6 +88,10 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kp_roll")  { robotSettings.kp_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "ki_roll")  { robotSettings.ki_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "kd_roll")  { robotSettings.kd_roll = setPkt.value; save_pid_needed = true; }
+
+            else if (key == "kp_opitch") { robotSettings.kp_outer_pitch = setPkt.value; save_pid_needed = true; }
+            else if (key == "ki_opitch") { robotSettings.ki_outer_pitch = setPkt.value; save_pid_needed = true; }
+            else if (key == "kd_opitch") { robotSettings.kd_outer_pitch = setPkt.value; save_pid_needed = true; }
 
             else if (key == "kp_oroll") { robotSettings.kp_outer_roll = setPkt.value; save_pid_needed = true; }
             else if (key == "ki_oroll") { robotSettings.ki_outer_roll = setPkt.value; save_pid_needed = true; }
@@ -101,10 +103,10 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "wobble_thresh") { robotSettings.wobble_threshold = setPkt.value; save_wobble_needed = true; }
             else if (key == "wobble_minvel") { robotSettings.wobble_min_vel = setPkt.value; save_wobble_needed = true; }
 
-            // Only burn to flash if it was a permanent variable
             if (save_pid_needed) {
                 savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                                 robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                                robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch,
                                 robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                                 robotSettings.pitch_dir, robotSettings.roll_dir);             
             }
@@ -130,7 +132,7 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             bool found = true;
 
             xSemaphoreTake(stateMutex, portMAX_DELAY);
-            if (key == "dev_mode") value = robotSettings.dev_mode ? 1.0f : 0.0f; // Translate bool to float
+            if (key == "dev_mode") value = robotSettings.dev_mode ? 1.0f : 0.0f; 
             else if (key == "kp_pitch") value = robotSettings.kp_pitch;
             else if (key == "ki_pitch") value = robotSettings.ki_pitch;
             else if (key == "kd_pitch") value = robotSettings.kd_pitch;
@@ -138,6 +140,10 @@ void processPacket(const uint8_t *mac, const uint8_t *data, int len) {
             else if (key == "kp_roll") value = robotSettings.kp_roll;
             else if (key == "ki_roll") value = robotSettings.ki_roll;
             else if (key == "kd_roll") value = robotSettings.kd_roll;
+
+            else if (key == "kp_opitch") value = robotSettings.kp_outer_pitch;
+            else if (key == "ki_opitch") value = robotSettings.ki_outer_pitch;
+            else if (key == "kd_opitch") value = robotSettings.kd_outer_pitch;
 
             else if (key == "kp_oroll") value = robotSettings.kp_outer_roll;
             else if (key == "ki_oroll") value = robotSettings.ki_outer_roll;

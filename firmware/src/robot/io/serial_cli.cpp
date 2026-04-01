@@ -50,14 +50,16 @@ void handleSerialCommands() {
                   robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch, robotSettings.pitch_dir);
         Serial.printf("Roll  PID [P:%.3f I:%.3f D:%.3f] Dir:%.1f\n", 
                   robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, robotSettings.roll_dir);
+        Serial.printf("OPitch PID [P:%.3f I:%.3f D:%.3f]\n",
+                  robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch);
         Serial.printf("ORoll PID [P:%.3f I:%.3f D:%.3f]\n",
                   robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll);
         Serial.printf("Filters   [D_Alpha:%.3f Out_Alpha:%.3f Deadband:%.3f]\n", 
                   robotSettings.d_alpha, robotSettings.out_alpha, robotSettings.deadband);
         Serial.printf("Debug General: %s\n", dbg_general ? "ON" : "OFF");
         Serial.printf("Debug IMU: %s\n", dbg_imu ? "ON" : "OFF");
-        Serial.printf("Debug Pkt RX: %s\n", dbg_pkt_rx ? "ON" : "OFF"); // <--- Split view
-        Serial.printf("Debug Pkt TX: %s\n", dbg_pkt_tx ? "ON" : "OFF"); // <--- Split view
+        Serial.printf("Debug Pkt RX: %s\n", dbg_pkt_rx ? "ON" : "OFF"); 
+        Serial.printf("Debug Pkt TX: %s\n", dbg_pkt_tx ? "ON" : "OFF"); 
         Serial.printf("Calibration Req: %s\n", isCalibrationRequired() ? "YES" : "NO (Dev Mode)");
         Serial.println("==============================");
         
@@ -71,9 +73,10 @@ void handleSerialCommands() {
         Serial.println("  SET_CNF <ms>        - Set Confirm timeout");
         Serial.println("  SET_ENC <min> <max> - Set Encoder limits");
 
-        Serial.println("  SET_PID_PITCH <P> <I> <D> <DIR> - Set Pitch constants");
-        Serial.println("  SET_PID_ROLL  <P> <I> <D> <DIR> - Set Roll constants");
-        Serial.println("  SET_PID_OROLL <P> <I> <D>       - Set Outer Roll constants");
+        Serial.println("  SET_PID_PITCH  <P> <I> <D> <DIR> - Set Pitch constants");
+        Serial.println("  SET_PID_ROLL   <P> <I> <D> <DIR> - Set Roll constants");
+        Serial.println("  SET_PID_OPITCH <P> <I> <D>       - Set Outer Pitch constants");
+        Serial.println("  SET_PID_OROLL  <P> <I> <D>       - Set Outer Roll constants");
 
         Serial.println("  SET_FILTER <D_ALPHA> <OUT_ALPHA> <DEADBAND> - Set Derivative, Output smoothing (0-1), and Error Deadband");
         
@@ -125,6 +128,7 @@ void handleSerialCommands() {
         if (count == 4) {
             savePidSettings(p, i, d, 
                            robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll, 
+                           robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch,
                            robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                            dir, robotSettings.roll_dir);
             Serial.printf("SUCCESS: Pitch PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
@@ -138,11 +142,26 @@ void handleSerialCommands() {
         if (count == 4) {
             savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                            p, i, d, 
+                           robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch,
                            robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
                            robotSettings.pitch_dir, dir);
             Serial.printf("SUCCESS: Roll PID updated to P:%.4f I:%.4f D:%.4f Dir:%.1f\n", p, i, d, dir);
         } else {
             Serial.println("ERROR: Invalid format. Use: SET_PID_ROLL <P> <I> <D> <DIR>");
+        }
+    }
+    else if (cmd == "SET_PID_OPITCH") {
+        float p, i, d;
+        int count = sscanf(args.c_str(), "%f %f %f", &p, &i, &d);
+        if (count == 3) {
+            savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
+                           robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                           p, i, d, 
+                           robotSettings.kp_outer_roll, robotSettings.ki_outer_roll, robotSettings.kd_outer_roll,
+                           robotSettings.pitch_dir, robotSettings.roll_dir);
+            Serial.printf("SUCCESS: Outer Pitch PID updated to P:%.4f I:%.4f D:%.4f\n", p, i, d);
+        } else {
+            Serial.println("ERROR: Invalid format. Use: SET_PID_OPITCH <P> <I> <D>");
         }
     }
     else if (cmd == "SET_PID_OROLL") {
@@ -151,6 +170,7 @@ void handleSerialCommands() {
         if (count == 3) {
             savePidSettings(robotSettings.kp_pitch, robotSettings.ki_pitch, robotSettings.kd_pitch,
                            robotSettings.kp_roll, robotSettings.ki_roll, robotSettings.kd_roll,
+                           robotSettings.kp_outer_pitch, robotSettings.ki_outer_pitch, robotSettings.kd_outer_pitch,
                            p, i, d, 
                            robotSettings.pitch_dir, robotSettings.roll_dir);
             Serial.printf("SUCCESS: Outer Roll PID updated to P:%.4f I:%.4f D:%.4f\n", p, i, d);
@@ -161,11 +181,8 @@ void handleSerialCommands() {
    else if (cmd == "SET_FILTER") {
         float d_alpha, out_alpha, deadband;
         if (sscanf(args.c_str(), "%f %f %f", &d_alpha, &out_alpha, &deadband) == 3) {
-            // Constrain alpha values between 0.0 and 1.0
             d_alpha = constrain(d_alpha, 0.0f, 1.0f);
             out_alpha = constrain(out_alpha, 0.0f, 1.0f);
-            
-            // Prevent negative deadband
             if (deadband < 0.0f) deadband = 0.0f;
             
             saveFilterSettings(d_alpha, out_alpha, deadband);
@@ -182,7 +199,6 @@ void handleSerialCommands() {
         bool state = (args == "ON");
         saveDebugSettings(dbg_general, state, dbg_pkt_rx, dbg_pkt_tx);
     }
-    // --- NEW: Split Debug Commands ---
     else if (cmd == "SET_DBG_RX") {
         bool state = (args == "ON");
         saveDebugSettings(dbg_general, dbg_imu, state, dbg_pkt_tx);

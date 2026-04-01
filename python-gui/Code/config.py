@@ -46,11 +46,11 @@ MAX_ROBOTS = 2
 LEARNING_TIMEOUT_SECONDS = 5.0
 LEARNING_THRESHOLD = 0.3  # Axis movement threshold for detection
 
-DEFAULT_TUNABLE_SETTINGS = [
-    "kp_pitch", "ki_pitch", "kd_pitch", 
-    "kp_roll", "ki_roll", "kd_roll",
-    "kp_oroll", "ki_oroll", "kd_oroll", 
-    "pitch_dir", "roll_dir",
-    "wobble_gain", "wobble_thresh", "wobble_minvel",
-    "dev_mode"
-]
+DEFAULT_TUNABLE_SETTINGS = {
+    "Main Axis (Pitch) Inner PID": ["kp_pitch", "ki_pitch", "kd_pitch"],
+    "Main Axis (Pitch) Outer PID": ["kp_opitch", "ki_opitch", "kd_opitch"],
+    "Secondary Axis (Roll) Inner PID": ["kp_roll", "ki_roll", "kd_roll"],
+    "Secondary Axis (Roll) Outer PID": ["kp_oroll", "ki_oroll", "kd_oroll"],
+    "Wobble Mitigation": ["wobble_gain", "wobble_thresh", "wobble_minvel"],
+    "System & Misc": ["pitch_dir", "roll_dir", "dev_mode"]
+}

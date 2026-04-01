@@ -40,7 +40,6 @@ void loadAllPreferences() {
     robotSettings.encoder_limit_min = prefs.getInt("enc_min", -12288);
     robotSettings.encoder_limit_max = prefs.getInt("enc_max", 12288);
 
-    // Load PID values with current hardcoded defaults
     robotSettings.kp_pitch = prefs.getFloat("kp_p", 0.05f);
     robotSettings.ki_pitch = prefs.getFloat("ki_p", 0.001f);
     robotSettings.kd_pitch = prefs.getFloat("kd_p", 0.01f);
@@ -48,6 +47,11 @@ void loadAllPreferences() {
     robotSettings.kp_roll  = prefs.getFloat("kp_r", 0.05f);
     robotSettings.ki_roll  = prefs.getFloat("ki_r", 0.001f);
     robotSettings.kd_roll  = prefs.getFloat("kd_r", 0.01f);
+
+    // OUTER PID PITCH <-- NEW
+    robotSettings.kp_outer_pitch = prefs.getFloat("kp_op", 1.5f);
+    robotSettings.ki_outer_pitch = prefs.getFloat("ki_op", 0.05f);
+    robotSettings.kd_outer_pitch = prefs.getFloat("kd_op", 0.1f);
 
     // OUTER PID ROLL
     robotSettings.kp_outer_roll = prefs.getFloat("kp_or", 1.5f);
@@ -67,10 +71,9 @@ void loadAllPreferences() {
 
     dbg_general = prefs.getBool("dbg_gen", true);
     dbg_imu     = prefs.getBool("dbg_imu", false);
-    dbg_pkt_rx  = prefs.getBool("dbg_prx", false); // <--- Load RX config
-    dbg_pkt_tx  = prefs.getBool("dbg_ptx", false); // <--- Load TX config
+    dbg_pkt_rx  = prefs.getBool("dbg_prx", false); 
+    dbg_pkt_tx  = prefs.getBool("dbg_ptx", false); 
 
-    
     prefs.end(); 
     
     robotSettings.dev_mode = false;
@@ -98,8 +101,8 @@ void saveDebugSettings(bool gen, bool imu, bool pkt_rx, bool pkt_tx) {
     
     size_t w1 = prefs.putBool("dbg_gen", gen);
     size_t w2 = prefs.putBool("dbg_imu", imu);
-    size_t w3 = prefs.putBool("dbg_prx", pkt_rx); // <--- Save RX
-    size_t w4 = prefs.putBool("dbg_ptx", pkt_tx); // <--- Save TX
+    size_t w3 = prefs.putBool("dbg_prx", pkt_rx);
+    size_t w4 = prefs.putBool("dbg_ptx", pkt_tx);
     
     prefs.end();
 
@@ -128,18 +131,20 @@ void saveEncoderLimits(int32_t min_limit, int32_t max_limit) {
     setEncoderLimits(min_limit, max_limit);
 }
 
-void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float kpor, float kior, float kdor, float pdir, float rdir) {
+void savePidSettings(float kpp, float kip, float kdp, float kpr, float kir, float kdr, float kpop, float kiop, float kdop, float kpor, float kior, float kdor, float pdir, float rdir) {
     prefs.begin(PREF_NAMESPACE, false);
     prefs.putFloat("kp_p", kpp); prefs.putFloat("ki_p", kip); prefs.putFloat("kd_p", kdp);
     prefs.putFloat("kp_r", kpr); prefs.putFloat("ki_r", kir); prefs.putFloat("kd_r", kdr);
-    prefs.putFloat("kp_or", kpor); prefs.putFloat("ki_or", kior); prefs.putFloat("kd_or", kdor); // <-- NEW
+    prefs.putFloat("kp_op", kpop); prefs.putFloat("ki_op", kiop); prefs.putFloat("kd_op", kdop); // <-- NEW
+    prefs.putFloat("kp_or", kpor); prefs.putFloat("ki_or", kior); prefs.putFloat("kd_or", kdor);
     prefs.putFloat("p_dir", pdir); prefs.putFloat("r_dir", rdir);
     prefs.end();
 
     // Update active runtime settings immediately
     robotSettings.kp_pitch = kpp; robotSettings.ki_pitch = kip; robotSettings.kd_pitch = kdp;
     robotSettings.kp_roll = kpr;  robotSettings.ki_roll = kir;  robotSettings.kd_roll = kdr;
-    robotSettings.kp_outer_roll = kpor; robotSettings.ki_outer_roll = kior; robotSettings.kd_outer_roll = kdor; // <-- NEW
+    robotSettings.kp_outer_pitch = kpop; robotSettings.ki_outer_pitch = kiop; robotSettings.kd_outer_pitch = kdop; // <-- NEW
+    robotSettings.kp_outer_roll = kpor; robotSettings.ki_outer_roll = kior; robotSettings.kd_outer_roll = kdor;
     robotSettings.pitch_dir = pdir; robotSettings.roll_dir = rdir;
 }
 
@@ -147,13 +152,12 @@ void saveFilterSettings(float d_alpha, float out_alpha, float deadband) {
     prefs.begin(PREF_NAMESPACE, false);
     prefs.putFloat("d_alpha", d_alpha);
     prefs.putFloat("out_alpha", out_alpha);
-    prefs.putFloat("deadband", deadband); // <--- ADD THIS LINE
+    prefs.putFloat("deadband", deadband);
     prefs.end();
 
-    // Update active runtime settings immediately
     robotSettings.d_alpha = d_alpha;
     robotSettings.out_alpha = out_alpha;
-    robotSettings.deadband = deadband; // <--- ADD THIS LINE
+    robotSettings.deadband = deadband;
 }
 
 void saveWobbleSettings(float gain, float threshold, float min_vel) {
@@ -163,7 +167,6 @@ void saveWobbleSettings(float gain, float threshold, float min_vel) {
     prefs.putFloat("w_mvel", min_vel);
     prefs.end();
 
-    // Update active runtime settings immediately
     robotSettings.wobble_gain = gain;
     robotSettings.wobble_threshold = threshold;
     robotSettings.wobble_min_vel = min_vel;
