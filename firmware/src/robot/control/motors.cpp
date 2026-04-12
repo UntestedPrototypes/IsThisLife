@@ -46,20 +46,19 @@ void setMotorSpeed(float target_normVx, float target_normVy) {
     readSecondaryIMU(&sRoll, &sPitch, &sYaw);
     
     // Calculate the difference between the secondary pendulum and main ball
-    float rollDifference = sRoll - mRoll;
+    float rollDifference = mRoll - sRoll;
     
     // Block movement if difference exceeds +/- 80 degrees
-    // IMPORTANT: Depending on servo mounting, you might need to swap the
-    // target_normVy > 0.0f check to < 0.0f if the servo drives "backwards"
-    if (rollDifference > 80.0f && target_normVy > 0.0f) {
-        target_normVy = 0.0f; // Block further positive rotation
-    } else if (rollDifference < -80.0f && target_normVy < 0.0f) {
-        target_normVy = 0.0f; // Block further negative rotation
+    if (rollDifference > 75.0f && (robotSettings.roll_dir ? target_normVy > 0.0f : target_normVy < 0.0f)) {
+        target_normVy = 0.0f; 
+        DEBUG_PRINTF("SAFETY BLOCK: Excessive roll difference (%.2f).\n", rollDifference);
+    } else if (rollDifference < -75.0f && (robotSettings.roll_dir ? target_normVy < 0.0f : target_normVy > 0.0f)) {
+        target_normVy = 0.0f;
+        DEBUG_PRINTF("SAFETY BLOCK: Excessive roll difference (%.2f).\n", rollDifference);
     }
     
     // 1. Apply smoothing/filtering
-    const float alpha = 1.0f; 
-    current_normVx = target_normVx;
+    current_normVx = (target_normVx * robotSettings.d_alpha) + (current_normVx * (1.0f - robotSettings.d_alpha));
     current_normVy = target_normVy;
 
     if (abs(current_normVx - target_normVx) < 0.002f) current_normVx = target_normVx;
@@ -69,8 +68,8 @@ void setMotorSpeed(float target_normVx, float target_normVy) {
     static uint32_t last_pwm_update = 0;
     uint32_t now = millis();
     if (now - last_pwm_update >= 20) {
-        float locked_normVx = round(current_normVx * 50.0f) / 50.0f; // Quantize to 0.02 increments for smoother control and reduced noise
-        mainMotor.command(locked_normVx);
+        // Send the high-resolution continuous float directly to the motor
+        mainMotor.command(current_normVx); 
         last_pwm_update = now;
     }
 

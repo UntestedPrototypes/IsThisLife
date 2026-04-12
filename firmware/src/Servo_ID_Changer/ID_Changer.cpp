@@ -1,4 +1,5 @@
 #ifdef ROLE_ID_CHANGER
+#include <Arduino.h>
 #include <SCServo.h>
 
 // Pins for Waveshare ESP32 Servo Driver Board
@@ -55,7 +56,7 @@ void runWiggleTest(int id) {
 
     // Safety Force: Enable Torque and Set Wheel Mode
     st.EnableTorque(id, 1);  // Ensure motor is powered
-    st.WheelMode(id);        // Force into velocity mode
+    st.setMode(id, SMS_STS_MODE_WHEEL);        // Force into velocity mode
     delay(50);               // Small delay for servo to process mode change
 
     bool keepWiggling = true;
