@@ -28,7 +28,9 @@ I want to highlight the heartbeat in the packets. This is the most important saf
 
 ## MOTORS & DRIVERS
 
-The main motor is controlled by a Electronics Speed Controller (ESC) for RC Car which talks the esp32 over a PWM signal where 1500us is neutral, 1000us is back and 2000us is forward. If this sound unfimiliar to you use GPT to walk you through the code.
+The main motor is controlled by a Electronics Speed Controller (ESC) for RC Car which talks the esp32 over a PWM signal where 1500us is neutral, 1000us is back and 2000us is forward.
+
+For the secondary axis two ST3215 motors are used. Their ID should be set BEFORE connecting everything. The one on the power side should be ID=2 and the one on the ESP32 side should be set the ID=1. The rest of the settings will be set by the robot programming.
 
 ### Driver settings
 

@@ -37,8 +37,8 @@ void loadAllPreferences() {
     robotSettings.telemetry_interval = prefs.getUInt("tlm_int", DEFAULT_TELEMETRY_INTERVAL);
     robotSettings.confirm_timeout_ms = prefs.getUInt("cnf_timeout", DEFAULT_CONFIRM_TIMEOUT_MS);
 
-    robotSettings.encoder_limit_min = prefs.getInt("enc_min", -12288);
-    robotSettings.encoder_limit_max = prefs.getInt("enc_max", 12288);
+    robotSettings.encoder_limit_min = prefs.getInt("enc_min", -4096);
+    robotSettings.encoder_limit_max = prefs.getInt("enc_max", 4096);
 
     robotSettings.kp_pitch = prefs.getFloat("kp_p", 0.05f);
     robotSettings.ki_pitch = prefs.getFloat("ki_p", 0.001f);

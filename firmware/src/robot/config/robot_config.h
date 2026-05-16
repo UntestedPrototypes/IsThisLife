@@ -9,16 +9,16 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
-// --- Default Robot Identification ---
-#define DEFAULT_ROBOT_ID 3
+// (required) Default Robot Identification ---
+#define DEFAULT_ROBOT_ID 1
 
-// (Optional) Define a default MAC here if you want a fallback, or rely on the extern array
-#define DEFAULT_MAC_0 0xB0
-#define DEFAULT_MAC_1 0xCB
-#define DEFAULT_MAC_2 0xD8
-#define DEFAULT_MAC_3 0xC1
-#define DEFAULT_MAC_4 0x6B
-#define DEFAULT_MAC_5 0xE0
+// (required) Define a default MAC here if you want a fallback, or rely on the extern array
+#define DEFAULT_MAC_0 0x28
+#define DEFAULT_MAC_1 0x05
+#define DEFAULT_MAC_2 0xA5
+#define DEFAULT_MAC_3 0x6F
+#define DEFAULT_MAC_4 0x3D
+#define DEFAULT_MAC_5 0xC0
 
 // --- Default Timings ---
 #define DEFAULT_HEARTBEAT_LOSS_TIMEOUT_MS 500
