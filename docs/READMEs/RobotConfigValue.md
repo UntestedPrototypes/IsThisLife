@@ -10,7 +10,7 @@ To ADD:
 
 
 
-=== Current Robot Settings ===
+=== Current Robot Settings Example ===
 Robot ID: 3
 Controller MAC: 28:05:A5:6F:3D:C0
 Heartbeat Timeout: 500 ms

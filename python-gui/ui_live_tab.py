@@ -168,7 +168,7 @@ class LiveViewTab:
     def _update_ui_loop(self):
         for r_id, widgets in self.robot_widgets.items():
             robot = self.robot_state.get_robot(r_id)
-            if not robot.is_connected(timeout_sec=0.5):
+            if not robot.is_connected(timeout_sec=1.5):
                 widgets["estop_banner"].configure(text="CONNECTION LOST", bg="#7f8c8d", fg="white")
                 widgets["op_banner"].configure(text="OFFLINE", bg="#7f8c8d", fg="white")
                 widgets["imu_main"].configure(foreground="#999999")

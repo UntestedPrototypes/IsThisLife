@@ -68,7 +68,8 @@ class Dashboard:
         self.root.after(10, self._read_serial_loop)
 
     def _handle_telemetry(self, data):
-        if not self.robot_state.exists(data.robot_id): return
+        if not self.robot_state.exists(data.robot_id): 
+            self.robot_state.get_robot(data.robot_id)
         
         self.robot_state.mark_seen(data.robot_id)
         
@@ -220,7 +221,7 @@ class Dashboard:
                 ttk.Label(self.robot_status_container, text=f"R{r_id}: ").pack(side=tk.LEFT)
                 robot = self.robot_state.get_robot(r_id)
                 
-                if not robot.is_connected(timeout_sec=0.5):
+                if not robot.is_connected(timeout_sec=1.5):
                     r_state, r_color = "OFFLINE", "gray"
                 elif robot.estop_active:
                     r_state, r_color = "E-STOP", "red"
@@ -310,11 +311,11 @@ class Dashboard:
 
     def _periodic_control_loop(self):
         active = getattr(self, 'controlled_robot_ids', [])
-        for r_id in range(1, 4): 
+        for r_id in range(1, MAX_ROBOTS+1): # Support for 5 robots in total
             if r_id not in active:
                 robot = self.robot_state.get_robot(r_id)
                 packet_sender.send_control(r_id, robot.control_mode, 0.0, 0.0, 0.0)
-        self.root.after(CONTROL_UPDATE_RATE_MS, self._periodic_control_loop)
+        self.root.after(500, self._periodic_control_loop)
 
     def cleanup(self):
         serial_comm.disconnect()

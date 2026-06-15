@@ -7,7 +7,15 @@
 #include <Arduino.h>
 
 void readSerialCommands() {
-    while (Serial.available() > 0) {
+    if (Serial.available() > 0 && Serial.available() < 2) {
+        delay(2);
+        if(Serial.available() < 2) {
+             while(Serial.available()) Serial.read(); // Flush garbage
+             return; 
+        }
+    }
+    
+    while (Serial.available() >= 2) {
         uint8_t cmd_type = Serial.peek();
         size_t expected_len = 0;
 

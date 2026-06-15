@@ -1,5 +1,5 @@
 {
-    "com_port": "3",
+    "com_port": "COM21",
     "baud_rate": 115200,
     "auto_reconnect": true,
     "tunable_settings": {
@@ -11,13 +11,13 @@
         "System & Misc": ["pitch_dir", "roll_dir", "dev_mode"]
     },
     "assignments": {
-        "3": {
+        "4": {
             "guid": "030082795e040000ea02000000007200",
             "instance_index": 0,
             "scales": {
                 "vx": 100,
                 "vy": 100,
-                "omega": 0
+                "omega": 100
             },
             "deadzone": 10,
             "mappings": {
