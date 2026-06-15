@@ -5,6 +5,7 @@
 #include "../utils/debug.h"
 #include "../control/safety.h" 
 #include <Arduino.h>
+#include <WiFi.h>
 
 void handleSerialCommands() {
     if (!Serial.available()) return;
@@ -33,6 +34,7 @@ void handleSerialCommands() {
         
         Serial.println("\n=== Current Robot Settings ===");
         Serial.printf("Robot ID: %u\n", robotSettings.robot_id);
+        Serial.printf("Robot MAC: %s\n", WiFi.macAddress().c_str());
         Serial.printf("Controller MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", 
             robotSettings.controller_mac[0], robotSettings.controller_mac[1],
             robotSettings.controller_mac[2], robotSettings.controller_mac[3],

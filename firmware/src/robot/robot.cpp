@@ -53,6 +53,8 @@ void roleSetup() {
         Serial.println("ERROR: Initializing ESP-NOW failed");
         return;
     }
+    Serial.print("Robot Mac Address: ");
+    Serial.println(WiFi.macAddress());
     esp_now_register_recv_cb(onReceive);
     
     esp_now_peer_info_t peer{};

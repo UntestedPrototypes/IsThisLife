@@ -10,15 +10,24 @@
 #include <freertos/task.h>
 
 // (required) Default Robot Identification ---
-#define DEFAULT_ROBOT_ID 1
+#define DEFAULT_ROBOT_ID 5
 
-// (required) Define a default MAC here if you want a fallback, or rely on the extern array
-#define DEFAULT_MAC_0 0x28
-#define DEFAULT_MAC_1 0x05
-#define DEFAULT_MAC_2 0xA5
-#define DEFAULT_MAC_3 0x6F
-#define DEFAULT_MAC_4 0x3D
-#define DEFAULT_MAC_5 0xC0
+// (required) Define a default MAC here, or rely on the extern array
+#define DEFAULT_MAC_0 0x80
+#define DEFAULT_MAC_1 0xF3
+#define DEFAULT_MAC_2 0xDA
+#define DEFAULT_MAC_3 0x65
+#define DEFAULT_MAC_4 0x91
+#define DEFAULT_MAC_5 0x0C
+
+// Controller in Shipment 1
+// #define DEFAULT_MAC_0 0x28
+// #define DEFAULT_MAC_1 0x05
+// #define DEFAULT_MAC_2 0xA5
+// #define DEFAULT_MAC_3 0x6F
+// #define DEFAULT_MAC_4 0x3D
+// #define DEFAULT_MAC_5 0xC0
+
 
 // --- Default Timings ---
 #define DEFAULT_HEARTBEAT_LOSS_TIMEOUT_MS 500
